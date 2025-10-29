@@ -1,0 +1,70 @@
+{
+	"folders": [
+    {
+      "name": "greenhouse",
+      "path": "."
+    },
+    {
+      "name": "Test",
+      "path": "../Test"
+    }
+  ],
+  "settings": {
+    "files.associations": {
+      "deque": "cpp",
+      "string": "cpp",
+      "vector": "cpp",
+      "array": "cpp",
+      "list": "cpp",
+      "unordered_map": "cpp",
+      "string_view": "cpp",
+      "initializer_list": "cpp",
+      "type_traits": "cpp",
+      "cmath": "cpp",
+      "chrono": "cpp",
+      "new": "cpp",
+      "atomic": "cpp",
+      "cstdint": "cpp",
+      "*.tcc": "cpp",
+      "thread": "cpp",
+      "optional": "cpp",
+      "istream": "cpp",
+      "ostream": "cpp",
+      "ratio": "cpp",
+      "system_error": "cpp",
+      "functional": "cpp",
+      "tuple": "cpp",
+      "utility": "cpp",
+      "fstream": "cpp",
+      "limits": "cpp",
+      "sstream": "cpp",
+      "condition_variable": "cpp",
+      "exception": "cpp",
+      "iterator": "cpp",
+      "memory": "cpp",
+      "memory_resource": "cpp",
+      "random": "cpp",
+      "mutex": "cpp",
+      "stdexcept": "cpp",
+      "streambuf": "cpp",
+      "typeinfo": "cpp",
+      "cctype": "cpp",
+      "clocale": "cpp",
+      "cstdarg": "cpp",
+      "cstddef": "cpp",
+      "cstdio": "cpp",
+      "cstdlib": "cpp",
+      "cstring": "cpp",
+      "ctime": "cpp",
+      "cwchar": "cpp",
+      "cwctype": "cpp",
+      "unordered_set": "cpp",
+      "algorithm": "cpp",
+      "map": "cpp",
+      "numeric": "cpp",
+      "iomanip": "cpp",
+      "iosfwd": "cpp",
+      "cinttypes": "cpp"
+    }
+  }
+}
