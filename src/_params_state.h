@@ -8,6 +8,8 @@ using PL = size_t[];
 
 template <typename T>
 class _ParamState {
+  static_assert(std::is_arithmetic<T>::value, "_ParamState: type <T> must be numeric.");
+
 private:
   struct _Param {
     size_t _ID        = 0;

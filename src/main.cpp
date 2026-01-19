@@ -962,27 +962,29 @@ inline void WebBuild(sets::Builder &b) {
             logger.printf("Stat.AbsoluteDown: %.2f\n", stat.AbsoluteDown());
             logger.printf("Stat.IsValid: %s\n", stat.IsValid ? "true" : "false");
             logger.println("~");
-            logger.printf("LastChange.Old: %.2f\n", stat.LastChange.Old);
-            logger.printf("LastChange.New: %.2f\n", stat.LastChange.New);
-            logger.printf("LastChange.By: %.2f\n", stat.LastChange.By);
-            logger.printf("LastChange.Millis: %lu\n", stat.LastChange.Millis);
-            logger.printf("LastChange.IsRevert: %s\n", stat.LastChange.IsRevert ? "true" : "false");
-            logger.printf("LastChange.IsValid: %s\n", stat.LastChange.IsValid ? "true" : "false");
+            logger.printf("Events.Change.Old: %.2f\n", stat.Events.Change.Old);
+            logger.printf("Events.Change.New: %.2f\n", stat.Events.Change.New);
+            logger.printf("Events.Change.Diff: %.2f\n", stat.Events.Change.Diff);
+            logger.printf("Events.Change.Millis: %lu\n", stat.Events.Change.Millis);
+            logger.printf("Events.Change.IsValid: %s\n", stat.Events.Change.IsValid ? "true" : "false");
             logger.println("~");
-            logger.printf("LastRevert.Old: %.2f\n", stat.LastRevert.Old);
-            logger.printf("LastRevert.New: %.2f\n", stat.LastRevert.New);
-            logger.printf("LastRevert.Millis: %lu\n", stat.LastRevert.Millis);
-            logger.printf("LastRevert.IsValid: %s\n", stat.LastRevert.IsValid ? "true" : "false");
+            logger.printf("Events.Revert.Old: %.2f\n", stat.Events.Revert.Old);
+            logger.printf("Events.Revert.New: %.2f\n", stat.Events.Revert.New);
+            logger.printf("Events.Revert.Diff: %.2f\n", stat.Events.Revert.Diff);
+            logger.printf("Events.Revert.Millis: %lu\n", stat.Events.Revert.Millis);
+            logger.printf("Events.Revert.IsValid: %s\n", stat.Events.Revert.IsValid ? "true" : "false");
             logger.println("~");
-            logger.printf("LastIncrease.Old: %.2f\n", stat.LastIncrease.Old);
-            logger.printf("LastIncrease.New: %.2f\n", stat.LastIncrease.New);
-            logger.printf("LastIncrease.Millis: %lu\n", stat.LastIncrease.Millis);
-            logger.printf("LastIncrease.IsValid: %s\n", stat.LastIncrease.IsValid ? "true" : "false");
+            logger.printf("Events.Increase.Old: %.2f\n", stat.Events.Increase.Old);
+            logger.printf("Events.Increase.New: %.2f\n", stat.Events.Increase.New);
+            logger.printf("Events.Increase.Diff: %.2f\n", stat.Events.Increase.Diff);
+            logger.printf("Events.Increase.Millis: %lu\n", stat.Events.Increase.Millis);
+            logger.printf("Events.Increase.IsValid: %s\n", stat.Events.Increase.IsValid ? "true" : "false");
             logger.println("~");
-            logger.printf("LastDecrease.Old: %.2f\n", stat.LastDecrease.Old);
-            logger.printf("LastDecrease.New: %.2f\n", stat.LastDecrease.New);
-            logger.printf("LastDecrease.Millis: %lu\n", stat.LastDecrease.Millis);
-            logger.printf("LastDecrease.IsValid: %s\n", stat.LastDecrease.IsValid ? "true" : "false");
+            logger.printf("Events.Decrease.Old: %.2f\n", stat.Events.Decrease.Old);
+            logger.printf("Events.Decrease.New: %.2f\n", stat.Events.Decrease.New);
+            logger.printf("Events.Decrease.Diff: %.2f\n", stat.Events.Decrease.Diff);
+            logger.printf("Events.Decrease.Millis: %lu\n", stat.Events.Decrease.Millis);
+            logger.printf("Events.Decrease.IsValid: %s\n", stat.Events.Decrease.IsValid ? "true" : "false");
           }
         }
 

@@ -73,34 +73,3 @@ PointerAlignmentStyle: Right
 ReferenceAlignment: Right
 AlignCaseArrows: true
 BreakBeforeTernaryOperators: false
-
-# AllowShortBlocksOnASingleLine: false
-# AllowShortFunctionsOnASingleLine: false
-# BreakBeforeBraces: Custom
-# BraceWrapping:
-#   AfterArray: false   # Перенос фигурной скобки массива на новую строку
-#   BeforeArray: true  # Открывающая скобка массива на новой строке
-#   AfterEnum: false
-#   BeforeEnum: true
-#   AfterStruct: false
-#   BeforeStruct: true
-#   AfterUnion: false
-#   BeforeUnion: true
-#   AfterClass: false
-#   BeforeClass: true
-#   AfterControlStatement: false
-#   BeforeControlStatement: true
-# # Настройки для массивов и списков
-# AlignArrayOfStructures: Left
-# BinPackArguments: false
-# BinPackParameters: false
-# BreakArrays: true     # Каждый элемент массива на новой строке
-# BreakBeforeBinaryOperators: None
-# BreakConstructorInitializers: AfterColon
-# CompactNamespaces: false
-# Cpp11BracedListStyle: true
-# KeepEmptyLinesAtTheStartOfBlocks: true
-# PointerAlignment: Left
-# SpaceBeforeCpp11BracedList: false
-# SpaceInEmptyParentheses: false
-# SpacesInSquareBrackets: false

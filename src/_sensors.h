@@ -202,6 +202,35 @@ public:
   using _OnValueAdd        = std::function<void(_ReadingsStat &Stat, float Value, ulong LastChangeMillisElapsed)>;
 
 private:
+  struct _ChangeEvent {
+    float Old     = 0;
+    float New     = 0;
+    float Diff    = 0;
+    ulong Millis  = 0;
+    bool  IsValid = false;
+
+    void clear() {
+      Old     = 0;
+      New     = 0;
+      Millis  = 0;
+      IsValid = false;
+    }
+  };
+
+  struct _ChangeEvents {
+    _ChangeEvent Change   = {};
+    _ChangeEvent Revert   = {};
+    _ChangeEvent Increase = {};
+    _ChangeEvent Decrease = {};
+
+    void clear() {
+      Change.clear();
+      Revert.clear();
+      Increase.clear();
+      Decrease.clear();
+    }
+  };
+
   float _Hysteresis = 0;
 
   bool _IsEnabled = false;
@@ -225,44 +254,7 @@ private:
   // }
 
 public:
-  struct _LastChange {
-    float Old      = 0;
-    float New      = 0;
-    float By       = 0;
-    ulong Millis   = 0;
-    bool  IsRevert = false;
-    bool  IsValid  = false;
-
-    void clear() {
-      Old      = 0;
-      New      = 0;
-      By       = 0;
-      Millis   = 0;
-      IsRevert = false;
-      IsValid  = false;
-    }
-  };
-
-  struct _SomeChange {
-    float Old     = 0;
-    float New     = 0;
-    float By      = 0;
-    ulong Millis  = 0;
-    bool  IsValid = false;
-
-    void clear() {
-      Old     = 0;
-      New     = 0;
-      By      = 0;
-      Millis  = 0;
-      IsValid = false;
-    }
-  };
-
-  _LastChange LastChange   = {};
-  _SomeChange LastRevert   = {};
-  _SomeChange LastIncrease = {};
-  _SomeChange LastDecrease = {};
+  _ChangeEvents Events;
 
   ulong MillisFrom = 0;
   ulong MillisTo   = 0;
@@ -329,10 +321,7 @@ public:
 
     IsValid = false;
 
-    LastChange.clear();
-    LastRevert.clear();
-    LastIncrease.clear();
-    LastDecrease.clear();
+    Events.clear();
   }
 
   void Reload() {
@@ -394,55 +383,55 @@ public:
     Avg = (Count > 0) ? Sum / static_cast<float>(Count) : 0;
 
     if (!IsValid) {
-      LastChange.New = Value;
+      Events.Change.New = Value;
     } else {
-      float _changed_by = Value - LastChange.New;
-      float _diff       = fabsf(_changed_by);
+      float _diff     = Value - Events.Change.New;
+      float _diff_abs = fabsf(_diff);
 
-      if (_diff > _Hysteresis) {
-        LastChange.IsRevert = false;
+      if (_diff_abs > _Hysteresis) {
+        bool IsRevert = false;
 
-        if (LastChange.IsValid && (LastChange.By * _changed_by) < 0) {
-          LastChange.IsRevert = true;
+        if (Events.Change.IsValid && (Events.Change.Diff * _diff) < 0) {
+          IsRevert = true;
 
-          LastRevert.Old     = LastChange.New;
-          LastRevert.New     = Value;
-          LastRevert.By      = _changed_by;
-          LastRevert.Millis  = _millis;
-          LastRevert.IsValid = true;
+          Events.Revert.Old     = Events.Change.New;
+          Events.Revert.New     = Value;
+          Events.Revert.Diff    = _diff;
+          Events.Revert.Millis  = _millis;
+          Events.Revert.IsValid = true;
 
           if (_on_direction_change)
-            _on_direction_change(*this, LastChange.New, Value, Value > LastChange.New);
+            _on_direction_change(*this, Events.Change.New, Value, Value > Events.Change.New);
         }
 
-        if (Value > LastChange.New) {
-          LastIncrease.Old     = LastChange.New;
-          LastIncrease.New     = Value;
-          LastIncrease.By      = _changed_by;
-          LastIncrease.Millis  = _millis;
-          LastIncrease.IsValid = true;
+        if (Value > Events.Change.New) {
+          Events.Increase.Old     = Events.Change.New;
+          Events.Increase.New     = Value;
+          Events.Increase.Diff    = _diff;
+          Events.Increase.Millis  = _millis;
+          Events.Increase.IsValid = true;
 
-          Incrase += _changed_by;
+          Incrase += _diff;
         }
 
-        if (Value < LastChange.New) {
-          LastDecrease.Old     = LastChange.New;
-          LastDecrease.New     = Value;
-          LastDecrease.By      = _changed_by;
-          LastDecrease.Millis  = _millis;
-          LastDecrease.IsValid = true;
+        if (Value < Events.Change.New) {
+          Events.Decrease.Old     = Events.Change.New;
+          Events.Decrease.New     = Value;
+          Events.Decrease.Diff    = _diff;
+          Events.Decrease.Millis  = _millis;
+          Events.Decrease.IsValid = true;
 
-          Decrase += _changed_by;
+          Decrase += _diff;
         }
 
-        LastChange.Old     = LastChange.New;
-        LastChange.New     = Value;
-        LastChange.By      = _changed_by;
-        LastChange.Millis  = _millis;
-        LastChange.IsValid = true;
+        Events.Change.Old     = Events.Change.New;
+        Events.Change.New     = Value;
+        Events.Change.Diff    = _diff;
+        Events.Change.Millis  = _millis;
+        Events.Change.IsValid = true;
 
         if (_on_value_change)
-          _on_value_change(*this, LastChange.Old, LastChange.New, LastChange.New > LastChange.Old, LastChange.IsRevert);
+          _on_value_change(*this, Events.Change.Old, Events.Change.New, Events.Change.New > Events.Change.Old, IsRevert);
       }
     }
 
@@ -451,16 +440,16 @@ public:
     if (_on_value_add)
       _on_value_add(*this, Value, LastChangeMillisElapsed());
 
-    // if (_IsWaiting && (LastChange.IsRevert || (LastChangeMillisElapsed() > 5000)))
+    // if (_IsWaiting && (Events.Change.IsRevert || (LastChangeMillisElapsed() > 5000)))
     //   _setWaiting(false);
   }
 
   bool IsUp(ulong Period = 0) {
-    return LastChange.IsValid && (LastChange.By > 0) && ((Period > 0) ? (millis() - LastChange.Millis) <= Period : true);
+    return Events.Change.IsValid && (Events.Change.Diff > 0) && ((Period > 0) ? (millis() - Events.Change.Millis) <= Period : true);
   }
 
   bool IsDown(ulong Period = 0) {
-    return LastChange.IsValid && (LastChange.By < 0) && ((Period > 0) ? (millis() - LastChange.Millis) <= Period : true);
+    return Events.Change.IsValid && (Events.Change.Diff < 0) && ((Period > 0) ? (millis() - Events.Change.Millis) <= Period : true);
   }
 
   float IsUpBy() {
@@ -480,11 +469,11 @@ public:
   }
 
   bool IsChanged(ulong Period = 0) {
-    return LastChange.IsValid && ((Period > 0) ? (millis() - LastChange.Millis) <= Period : false);
+    return Events.Change.IsValid && ((Period > 0) ? (millis() - Events.Change.Millis) <= Period : false);
   }
 
   ulong LastChangeMillisElapsed() {
-    return LastChange.IsValid ? millis() - LastChange.Millis : 0;
+    return Events.Change.IsValid ? millis() - Events.Change.Millis : 0;
   }
 
   void setHysteresis(float Value) {
