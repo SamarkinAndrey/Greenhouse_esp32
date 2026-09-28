@@ -107,6 +107,9 @@ public:
   }
 
   size_t tprintf(const char *format, ...) __attribute__((format(printf, 2, 3))) {
+    if (_mode == DM_DISABLED)
+      return 0;
+
     size_t  result = _print_time();
     char    buffer[256];
     va_list args;

@@ -27,8 +27,6 @@ _localParams localParams;
 inline void WebUpdate() {
   // debug.tprintln("WebUpdate()");
 
-  p.putValue(GreenHouse.Sensors.dht22in.Humidity.Value());
-
   sett.updater()
       .update(dbParams::TemperatureIn, GreenHouse.Sensors.dht22in.Temperature.Text())
       .update(dbParams::HumidityIn, GreenHouse.Sensors.dht22in.Humidity.Text())
@@ -51,6 +49,8 @@ inline void WebUpdate() {
   // }
 
   if (!db[HumidityModeIn].toBool()) {
+    p.putValue(GreenHouse.Sensors.dht22in.Humidity.Value());
+
     sett.updater().updatePlot(dbParams::HumidityPlotIn, p.Point(), true);
   }
 
@@ -91,7 +91,14 @@ inline void WebUpdate() {
   Params[dbParams::HumidityModeOut]    = db[HumidityModeOut];
   Params[dbParams::CO2ModeOut]         = db[CO2ModeOut];
 
+  static ulong _reloadMillis = 0;
+
   if (Params.IsChanged()) {
+    if ((_reloadMillis > 0) && ((millis() - _reloadMillis) < 3000ul))
+      return;
+
+    _reloadMillis = millis();
+
     debug.tprintln("Params.IsChanged()");
 
     sett.reload();
@@ -118,17 +125,17 @@ inline void AlertsUpdate() {
   _Device &Humidifier = GreenHouse.Devices.Humidifier;
   _Device &Heater     = GreenHouse.Devices.Heater;
 
-  float _midTemperature = (db[TemperatureAlarmThresholdHigh].toInt() + db[TemperatureAlarmThresholdLow].toInt()) / 2;
-  float _midHumidity    = (db[HumidityAlarmThresholdHigh].toInt() + db[HumidityAlarmThresholdLow].toInt()) / 2;
-  float _midCO2         = db[CO2AlarmThresholdHigh].toInt();
+  float _midTemperature = (db[TemperatureAlarmThresholdHigh].toFloat() + db[TemperatureAlarmThresholdLow].toFloat()) / 2;
+  float _midHumidity    = (db[HumidityAlarmThresholdHigh].toFloat() + db[HumidityAlarmThresholdLow].toFloat()) / 2;
+  float _midCO2         = db[CO2AlarmThresholdHigh].toFloat();
 
   if (db[TemperatureControlEnabled].toBool() && GreenHouse.Sensors.dht22in.IsValid()) {
     switch (Temperature.State()) {
       case _AlertState::Idle:
-        if (TemperatureIn.Value() < db[TemperatureAlarmThresholdLow].toInt())
+        if (TemperatureIn.Value() < db[TemperatureAlarmThresholdLow].toFloat())
           Temperature.setState(_AlertState::Low);
 
-        if ((TemperatureIn.Value() > db[TemperatureAlarmThresholdHigh].toInt()) &&
+        if ((TemperatureIn.Value() > db[TemperatureAlarmThresholdHigh].toFloat()) &&
             ((TemperatureOut.Value() < 1) || TemperatureIn.GreaterThen(TemperatureOut)))
           Temperature.setState(_AlertState::High);
 
@@ -142,7 +149,7 @@ inline void AlertsUpdate() {
               !TemperatureIn.IsUp() &&
               (TemperatureIn.IsUpBy() < db[TemperatureHeatingEffectiveThreshold].toFloat())) {
             //
-            if (TemperatureIn.Value() < db[TemperatureAlarmThresholdLow].toInt())
+            if (TemperatureIn.Value() < db[TemperatureAlarmThresholdLow].toFloat())
               Temperature.setState(_AlertState::LowNoEffect);
             else
               Temperature.setState(_AlertState::Idle);
@@ -165,13 +172,13 @@ inline void AlertsUpdate() {
               !TemperatureIn.IsDown() &&
               (TemperatureIn.IsDownBy() < db[TemperatureFanEffectiveThreshold].toFloat())) {
             //
-            if ((TemperatureIn.Value() > db[TemperatureAlarmThresholdHigh].toInt()) &&
+            if ((TemperatureIn.Value() > db[TemperatureAlarmThresholdHigh].toFloat()) &&
                 ((TemperatureOut.Value() < 1) || TemperatureIn.GreaterThen(TemperatureOut)))
               Temperature.setState(_AlertState::HighNoEffect);
             else
               Temperature.setState(_AlertState::Idle);
 
-            debug.tprintf("%s.IsUpBy: %.2f\n", TemperatureIn.Name(), TemperatureIn.IsUpBy());
+            debug.tprintf("%s.IsDownBy: %.2f\n", TemperatureIn.Name(), TemperatureIn.IsDownBy());
             debug.tprintf("%s.Diff: %.2f\n", TemperatureIn.Name(), TemperatureIn.Stat.Diff);
             debug.tprintf("%s.From: %.2f\n", TemperatureIn.Name(), TemperatureIn.Stat.ValueFrom);
             debug.tprintf("%s.To: %.2f\n", TemperatureIn.Name(), TemperatureIn.Stat.ValueTo);
@@ -183,7 +190,7 @@ inline void AlertsUpdate() {
       case _AlertState::LowNoEffect:
         if ((db[TemperatureHeatingNoEffectDelay].toInt() > 0) &&
             ((millis() - Temperature.PrevAlert.StopMillis) > (db[TemperatureHeatingNoEffectDelay].toInt() * 60000ul))) {
-          if (TemperatureIn.Value() < db[TemperatureAlarmThresholdLow].toInt())
+          if (TemperatureIn.Value() < db[TemperatureAlarmThresholdLow].toFloat())
             Temperature.setState(_AlertState::Low);
           else
             Temperature.setState(_AlertState::Idle);
@@ -194,7 +201,7 @@ inline void AlertsUpdate() {
       case _AlertState::HighNoEffect:
         if ((db[TemperatureFanNoEffectDelay].toInt() > 0) &&
             ((millis() - Temperature.PrevAlert.StopMillis) > (db[TemperatureFanNoEffectDelay].toInt() * 60000ul))) {
-          if ((TemperatureIn.Value() > db[TemperatureAlarmThresholdHigh].toInt()) &&
+          if ((TemperatureIn.Value() > db[TemperatureAlarmThresholdHigh].toFloat()) &&
               ((TemperatureOut.Value() < 1) || TemperatureIn.GreaterThen(TemperatureOut)))
             Temperature.setState(_AlertState::High);
           else
@@ -212,10 +219,10 @@ inline void AlertsUpdate() {
       case _AlertState::Idle:
         if (!Temperature.StateIs(_AlertState::High) &&
             !CO2.StateIs(_AlertState::High) &&
-            (HumidityIn.Value() < db[HumidityAlarmThresholdLow].toInt()))
+            (HumidityIn.Value() < db[HumidityAlarmThresholdLow].toFloat()))
           Humidity.setState(_AlertState::Low);
 
-        if ((HumidityIn.Value() > db[HumidityAlarmThresholdHigh].toInt()) &&
+        if ((HumidityIn.Value() > db[HumidityAlarmThresholdHigh].toFloat()) &&
             ((HumidityOut.Value() < 1) || HumidityIn.GreaterThen(HumidityOut)))
           Humidity.setState(_AlertState::High);
 
@@ -227,7 +234,7 @@ inline void AlertsUpdate() {
         } else {
           if (!Temperature.StateIs(_AlertState::High) &&
               !CO2.StateIs(_AlertState::High) &&
-              (HumidityIn.Value() < db[HumidityAlarmThresholdLow].toInt()))
+              (HumidityIn.Value() < db[HumidityAlarmThresholdLow].toFloat()))
             Humidity.setState(_AlertState::Low);
         }
 
@@ -245,7 +252,7 @@ inline void AlertsUpdate() {
             if (Temperature.StateIs(_AlertState::High) ||
                 CO2.StateIs(_AlertState::High))
               Humidity.setState(_AlertState::LowSuspended);
-            else if (HumidityIn.Value() < db[HumidityAlarmThresholdLow].toInt())
+            else if (HumidityIn.Value() < db[HumidityAlarmThresholdLow].toFloat())
               Humidity.setState(_AlertState::LowNoEffect);
             else
               Humidity.setState(_AlertState::Idle);
@@ -277,13 +284,13 @@ inline void AlertsUpdate() {
               !HumidityIn.IsDown() &&
               (HumidityIn.IsDownBy() < db[HumidityFanEffectiveThreshold].toFloat())) {
             //
-            if ((HumidityIn.Value() > db[HumidityAlarmThresholdHigh].toInt()) &&
+            if ((HumidityIn.Value() > db[HumidityAlarmThresholdHigh].toFloat()) &&
                 ((HumidityOut.Value() < 1) || HumidityIn.GreaterThen(HumidityOut)))
               Humidity.setState(_AlertState::HighNoEffect);
             else
               Humidity.setState(_AlertState::Idle);
 
-            debug.tprintf("%s.IsUpBy: %.2f\n", HumidityIn.Name(), HumidityIn.IsUpBy());
+            debug.tprintf("%s.IsDownBy: %.2f\n", HumidityIn.Name(), HumidityIn.IsDownBy());
             debug.tprintf("%s.Diff: %.2f\n", HumidityIn.Name(), HumidityIn.Stat.Diff);
             debug.tprintf("%s.From: %.2f\n", HumidityIn.Name(), HumidityIn.Stat.ValueFrom);
             debug.tprintf("%s.To: %.2f\n", HumidityIn.Name(), HumidityIn.Stat.ValueTo);
@@ -295,7 +302,7 @@ inline void AlertsUpdate() {
       case _AlertState::LowNoEffect:
         if ((db[HumidityWettingNoEffectDelay].toInt() > 0) &&
             ((millis() - Humidity.PrevAlert.StopMillis) > (db[HumidityWettingNoEffectDelay].toInt() * 60000ul))) {
-          if (HumidityIn.Value() < db[HumidityAlarmThresholdLow].toInt())
+          if (HumidityIn.Value() < db[HumidityAlarmThresholdLow].toFloat())
             Humidity.setState(_AlertState::Low);
           else
             Humidity.setState(_AlertState::Idle);
@@ -306,7 +313,7 @@ inline void AlertsUpdate() {
       case _AlertState::HighNoEffect:
         if ((db[HumidityFanNoEffectDelay].toInt() > 0) &&
             ((millis() - Humidity.PrevAlert.StopMillis) > (db[HumidityFanNoEffectDelay].toInt() * 60000ul))) {
-          if ((HumidityIn.Value() > db[HumidityAlarmThresholdHigh].toInt()) &&
+          if ((HumidityIn.Value() > db[HumidityAlarmThresholdHigh].toFloat()) &&
               ((HumidityOut.Value() < 1) || HumidityIn.GreaterThen(HumidityOut)))
             Humidity.setState(_AlertState::High);
           else
@@ -322,7 +329,7 @@ inline void AlertsUpdate() {
   if (db[CO2ControlEnabled].toBool() && GreenHouse.Sensors.mhz19in.IsValid()) {
     switch (CO2.State()) {
       case _AlertState::Idle:
-        if ((CO2In.Value() > db[CO2AlarmThresholdHigh].toInt()) &&
+        if ((CO2In.Value() > db[CO2AlarmThresholdHigh].toFloat()) &&
             ((CO2Out.Value() < 1) || CO2In.GreaterThen(CO2Out)))
           CO2.setState(_AlertState::High);
 
@@ -337,13 +344,13 @@ inline void AlertsUpdate() {
               !CO2In.IsDown() &&
               (CO2In.IsDownBy() < db[CO2FanEffectiveThreshold].toFloat())) {
             //
-            if ((CO2In.Value() > db[CO2AlarmThresholdHigh].toInt()) &&
+            if ((CO2In.Value() > db[CO2AlarmThresholdHigh].toFloat()) &&
                 ((CO2Out.Value() < 1) || CO2In.GreaterThen(CO2Out)))
               CO2.setState(_AlertState::HighNoEffect);
             else
               CO2.setState(_AlertState::Idle);
 
-            debug.tprintf("%s.IsUpBy: %.2f\n", CO2In.Name(), CO2In.IsUpBy());
+            debug.tprintf("%s.IsDownBy: %.2f\n", CO2In.Name(), CO2In.IsDownBy());
             debug.tprintf("%s.Diff: %.2f\n", CO2In.Name(), CO2In.Stat.Diff);
             debug.tprintf("%s.From: %.2f\n", CO2In.Name(), CO2In.Stat.ValueFrom);
             debug.tprintf("%s.To: %.2f\n", CO2In.Name(), CO2In.Stat.ValueTo);
@@ -355,7 +362,7 @@ inline void AlertsUpdate() {
       case _AlertState::HighNoEffect:
         if ((db[CO2FanNoEffectDelay].toInt() > 0) &&
             ((millis() - CO2.PrevAlert.StopMillis) > (db[CO2FanNoEffectDelay].toInt() * 60000ul))) {
-          if ((CO2In.Value() > db[CO2AlarmThresholdHigh].toInt()) &&
+          if ((CO2In.Value() > db[CO2AlarmThresholdHigh].toFloat()) &&
               ((CO2Out.Value() < 1) || CO2In.GreaterThen(CO2Out)))
             CO2.setState(_AlertState::High);
           else
@@ -393,9 +400,9 @@ inline void DevicesUpdate() {
   _Readings &HumidityOut    = GreenHouse.Sensors.dht22out.Humidity;
   _Readings &CO2Out         = GreenHouse.Sensors.mhz19out.CO2;
 
-  float _midTemperature = (db[TemperatureAlarmThresholdHigh].toInt() + db[TemperatureAlarmThresholdLow].toInt()) / 2;
-  float _midHumidity    = (db[HumidityAlarmThresholdHigh].toInt() + db[HumidityAlarmThresholdLow].toInt()) / 2;
-  float _midCO2         = db[CO2AlarmThresholdHigh].toInt();
+  float _midTemperature = (db[TemperatureAlarmThresholdHigh].toFloat() + db[TemperatureAlarmThresholdLow].toFloat()) / 2;
+  float _midHumidity    = (db[HumidityAlarmThresholdHigh].toFloat() + db[HumidityAlarmThresholdLow].toFloat()) / 2;
+  float _midCO2         = db[CO2AlarmThresholdHigh].toFloat();
 
   switch (Temperature.State()) {
     case _AlertState::High:
@@ -509,7 +516,7 @@ inline void WebAction(const size_t Param, const Text Value) {
     debug.tprint(Param);
   }
   debug.print(" = ");
-  debug.println(Param);
+  debug.println(Value.toString());
 
   if ((Param == dbParams::TemperatureControlEnabled) ||
       (Param == dbParams::HumidityControlEnabled) ||
@@ -589,6 +596,26 @@ inline void WebAction(const size_t Param, const Text Value) {
     case dbParams::CO2OutAutoCalibration:
       // GreenHouse.Sensors.mhz19out.setAutoCalibration(Value.toBool());
       break;
+
+    case dbParams::MqttServer:
+      mqtt.setServer(Value.toString().c_str());
+      break;
+
+    case dbParams::MqttPort:
+      mqtt.setPort(Value.toInt());
+      break;
+
+    case dbParams::MqttUser:
+      mqtt.setUser(Value.toString().c_str());
+      break;
+
+    case dbParams::MqttPassword:
+      mqtt.setPassword(Value.toString().c_str());
+      break;
+
+    case dbParams::MqttPublishDelay:
+      mqtt.setPublishDelay(Value.toInt() * 1000ul);
+      break;
   }
 }
 
@@ -611,7 +638,7 @@ inline void WebBuild(sets::Builder &b) {
     }
 
     if (!db[TemperatureModeIn].toBool()) {
-      b.PlotRunning(dbParams::TemperaturePlotIn, "°C", db[SensorScanDelay].toInt());
+      b.PlotRunning(dbParams::TemperaturePlotIn, "°C", static_cast<uint16_t>(GreenHouse.getWebUpdateInterval()));
     }
 
     if (b.beginRow("")) {
@@ -639,7 +666,7 @@ inline void WebBuild(sets::Builder &b) {
     }
 
     if (!db[CO2ModeIn].toBool()) {
-      b.PlotRunning(dbParams::CO2PlotIn, "ppm", db[SensorScanDelay].toInt());
+      b.PlotRunning(dbParams::CO2PlotIn, "ppm", static_cast<uint16_t>(GreenHouse.getWebUpdateInterval()));
     }
 
     b.endGroup();
@@ -953,7 +980,7 @@ inline void WebBuild(sets::Builder &b) {
             logger.printf("Stat.TotalDiffPercent: %.2f\n", stat.TotalDiffPercent);
             logger.printf("Stat.Sum: %.2f\n", stat.Sum);
             logger.printf("Stat.Avg: %.2f\n", stat.Avg);
-            logger.printf("Stat.Count: %d\n", stat.Count);
+            logger.printf("Stat.Count: %llu\n", static_cast<unsigned long long>(stat.Count));
             logger.printf("Stat.IsUp: %s\n", stat.IsUp() ? "true" : "false");
             logger.printf("Stat.IsDown: %s\n", stat.IsDown() ? "true" : "false");
             logger.printf("Stat.IsUpBy: %.2f\n", stat.IsUpBy());
@@ -996,12 +1023,12 @@ inline void WebBuild(sets::Builder &b) {
 
         logger.println("=== Stack Size ===");
 
-        logger.printf("dht22in.Temperature.StackSize = %d\n", GreenHouse.Sensors.dht22in.Temperature.StackSize());
-        logger.printf("dht22in.Humidity.StackSize = %d\n", GreenHouse.Sensors.dht22in.Humidity.StackSize());
-        logger.printf("mhz19in.CO2.StackSize = %d\n", GreenHouse.Sensors.mhz19in.CO2.StackSize());
-        logger.printf("dht22out.Temperature.StackSize = %d\n", GreenHouse.Sensors.dht22out.Temperature.StackSize());
-        logger.printf("dht22out.Humidity.StackSize = %d\n", GreenHouse.Sensors.dht22out.Humidity.StackSize());
-        logger.printf("mhz19out.CO2.StackSize = %d\n", GreenHouse.Sensors.mhz19out.CO2.StackSize());
+        logger.printf("dht22in.Temperature.StackSize = %u\n", GreenHouse.Sensors.dht22in.Temperature.StackSize());
+        logger.printf("dht22in.Humidity.StackSize = %u\n", GreenHouse.Sensors.dht22in.Humidity.StackSize());
+        logger.printf("mhz19in.CO2.StackSize = %u\n", GreenHouse.Sensors.mhz19in.CO2.StackSize());
+        logger.printf("dht22out.Temperature.StackSize = %u\n", GreenHouse.Sensors.dht22out.Temperature.StackSize());
+        logger.printf("dht22out.Humidity.StackSize = %u\n", GreenHouse.Sensors.dht22out.Humidity.StackSize());
+        logger.printf("mhz19out.CO2.StackSize = %u\n", GreenHouse.Sensors.mhz19out.CO2.StackSize());
 
         logger.println("~");
         logger.println("=== Readings Offset ===");
@@ -1315,7 +1342,7 @@ inline void mqttPublishAll() {
   mqtt.Publish("Humidity/ValueIn", GreenHouse.Sensors.dht22in.Humidity.Value());
   mqtt.Publish("Humidity/ValueOut", GreenHouse.Sensors.dht22out.Humidity.Value());
   mqtt.Publish("Humidity/ControlNotEffective", GreenHouse.Alerts.Humidity.StateIs({_AlertState::LowNoEffect, _AlertState::HighNoEffect}));
-  mqtt.Publish("Humidity/AlertState", static_cast<int>(GreenHouse.Alerts.Temperature.State()));
+  mqtt.Publish("Humidity/AlertState", static_cast<int>(GreenHouse.Alerts.Humidity.State()));
 
   mqtt.Publish("CO2/ValueIn", GreenHouse.Sensors.mhz19in.CO2.Value());
   mqtt.Publish("CO2/ValueOut", GreenHouse.Sensors.mhz19out.CO2.Value());
@@ -1418,6 +1445,14 @@ void setup() {
 
   setStampZone(3);
 
+  _FS_Initialized = LittleFS.begin();
+
+  if (!_FS_Initialized) {
+    LittleFS.end();
+
+    _FS_Initialized = LittleFS.begin(true);
+  }
+
   WiFi.setSleep(false);
   // WiFi.setTxPower(WIFI_POWER_11dBm);
 
@@ -1444,8 +1479,6 @@ void setup() {
   // sett.config.sliderTout = 500;
   // sett.config.updateTout = 1000;
   // sett.config.theme = sets::Colors::Black;
-
-  _FS_Initialized = LittleFS.begin(true);
 
   db.begin();
 
@@ -1510,8 +1543,8 @@ void setup() {
 
   db.init(dbParams::MqttServer, (Text) "srv2.clusterfly.ru");
   db.init(dbParams::MqttPort, (uint)9991);
-  db.init(dbParams::MqttUser, (Text) "user_b51554c5");
-  db.init(dbParams::MqttPassword, (Text) "rbspFdr9K8wV8");
+  db.init(dbParams::MqttUser, (Text) "****");
+  db.init(dbParams::MqttPassword, (Text) "****");
 
   db.init(dbParams::MqttPublishDelay, (uint)5);
 

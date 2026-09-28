@@ -135,8 +135,8 @@
 #define CO2_MAX_RANGE      5000
 #define MHZ19_HEATING_TIME 1000ul * 60ul * 3UL
 
-#define WIFI_SSID "Andrey_Lan"
-#define WIFI_PASS "2p0r1o8w"
+#define WIFI_SSID "****"
+#define WIFI_PASS "****"
 
 #define WIFI_CHECK_INTERVAL 1000ul * 60ul
 #define WEB_UPDATE_INTERVAL 1000ul
@@ -150,6 +150,8 @@
 
 #define SENSOR_CHECK_COUNT 3
 #define SENSOR_CHECK_DELAY 100ul
+
+#define SENSOR_FAIL_COUNT 3
 
 #define TABLE_USE_FOLD
 
@@ -561,6 +563,8 @@ const char *dbParamsName[] PROGMEM = {
 
     "MqttPublishDelay"};
 
+static_assert(sizeof(dbParamsName) / sizeof(dbParamsName[0]) == MqttPublishDelay + 1, "dbParamsName out of sync with dbParams");
+
 class _UsingIniciator {
 protected:
   void *_Iniciator = nullptr;
@@ -575,7 +579,10 @@ private:
   }
 };
 
-inline void MillisToTimeStr(char _buffer[], ulong _millis, bool _24 = false, bool _ms = false) {
+inline void MillisToTimeStr(char _buffer[], const size_t size, ulong _millis, bool _24 = false, bool _ms = false) {
+  if (!_buffer || !size)
+    return;
+
   ulong sec = _millis / 1000ul;
   ulong ms  = _millis % 1000ul;
 
@@ -584,13 +591,13 @@ inline void MillisToTimeStr(char _buffer[], ulong _millis, bool _24 = false, boo
   int secs  = (sec % 3600ul) % 60ul;
 
   if (_ms)
-    sprintf(_buffer, "%02d:%02d:%02d:%03d", hours, mins, secs, ms);
+    snprintf(_buffer, size, "%02d:%02d:%02d:%03d", hours, mins, secs, static_cast<int>(ms));
   else
-    sprintf(_buffer, "%02d:%02d:%02d", hours, mins, secs);
+    snprintf(_buffer, size, "%02d:%02d:%02d", hours, mins, secs);
 }
 
-inline void MillisToTimeStr24(char _buffer[], ulong _millis, bool _ms = false) {
-  MillisToTimeStr(_buffer, _millis, true, _ms);
+inline void MillisToTimeStr24(char _buffer[], const size_t size, ulong _millis, bool _ms = false) {
+  MillisToTimeStr(_buffer, size, _millis, true, _ms);
 }
 
 inline float ifnan(float Value) {

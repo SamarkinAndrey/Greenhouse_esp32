@@ -24,6 +24,8 @@ private:
 
   bool _IsLoaded = false;
 
+  bool _IsChanged = false;
+
   ulong _PredictMin = STAT_PREDICT_MIN;
   ulong _PredictMax = STAT_PREDICT_MAX;
 
@@ -88,6 +90,8 @@ private:
     uint8_t &idx    = isIncrease ? bufferIndexInc[range] : bufferIndexDec[range];
     float   &avgEff = isIncrease ? avgEfficiencyInc[range] : avgEfficiencyDec[range];
 
+    _IsChanged = true;
+
     effBuf[idx] = efficiency;
     idx         = (idx + 1) % STAT_BUFFER_SIZE;
 
@@ -107,11 +111,7 @@ private:
   }
 
 public:
-  DeviceController() {
-    load();
-  }
-
-  DeviceController(_MainType MainType, _SubType SubType, ulong PredictMin = STAT_PREDICT_MIN, ulong PredictMax = STAT_PREDICT_MAX) : DeviceController() {
+  DeviceController(_MainType MainType, _SubType SubType, ulong PredictMin = STAT_PREDICT_MIN, ulong PredictMax = STAT_PREDICT_MAX) {
     setType(MainType, SubType);
     setPredictMin(PredictMin);
     setPredictMax(PredictMax);
@@ -150,12 +150,14 @@ public:
 
     float neededChange = fabsf(TargetValue - CurrentValue);
 
-    ulong _predict = (efficiency != 0) ? static_cast<ulong>(fabsf(neededChange / efficiency) * 100) : 0;
+    float _predict = (efficiency != 0) ? ((neededChange / efficiency) * 100) : 0;
 
-    if (_predict < 0)
-      return (_PredictMin + _PredictMax) / 2;
+    if (!std::isfinite(_predict) || (_predict < 1))
+      return 0;
 
-    return constrain(_predict, _PredictMin, _PredictMax);
+    float _clamped = constrain(_predict, static_cast<float>(_PredictMin), static_cast<float>(_PredictMax));
+
+    return static_cast<ulong>(_clamped);
   }
 
   void dump() {
@@ -171,10 +173,15 @@ public:
   void Tick() {
     ulong currentTime = millis();
     if (((SaveMillis == 0) || (currentTime - SaveMillis) > SaveMillisInterval) && _FS_Initialized) {
-      load();
-      save();
-
       SaveMillis = currentTime;
+
+      load();
+
+      if (_IsChanged) {
+        _IsChanged = false;
+
+        save();
+      }
     }
   }
 
