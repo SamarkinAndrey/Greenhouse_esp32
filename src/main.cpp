@@ -4,6 +4,7 @@
 #include "_devices.h"
 #include "_greenhouse.h"
 #include "_params_state.h"
+#include "_pid.h"
 #include "_rdp.h"
 #include "_sensors.h"
 
@@ -14,6 +15,28 @@ _ParamState<bool> Params;
 _GreenHouse GreenHouse;
 
 DeviceController HC(_MainType::Device, _SubType::Humidifier, 10000ul, 20000ul);
+
+_PIDControl PIDHumidity(_SubType::Humidity);
+
+inline void PIDHumidityUpdate() {
+  float _low  = db[dbParams::HumidityAlarmThresholdLow].toFloat();
+  float _high = db[dbParams::HumidityAlarmThresholdHigh].toFloat();
+
+  if (_low > _high) {
+    float _swap = _low;
+    _low  = _high;
+    _high = _swap;
+  }
+
+  float _setpoint = db[dbParams::HumiditySetpoint].toFloat();
+  if (_setpoint < _low)
+    _setpoint = _low;
+  if (_setpoint > _high)
+    _setpoint = _high;
+
+  PIDHumidity.setSetpoint(_setpoint);
+  PIDHumidity.setTunings(db[dbParams::HumidityKp].toFloat(), db[dbParams::HumidityKi].toFloat(), db[dbParams::HumidityKd].toFloat());
+}
 
 struct _localParams {
   int  mhz19in_Range;
@@ -39,6 +62,11 @@ inline void WebUpdate() {
       .update(dbParams::FanMainLED, GreenHouse.Devices.FanMain.State())
       .update(dbParams::FanInnerLED, GreenHouse.Devices.FanInner.State())
       .update(H(log), logger);
+
+  if (PIDHumidity.LastComputeValid()) {
+    String _pidDuty = String(PIDHumidity.getOutputPercent(), 1) + " % (" + String(PIDHumidity.getOnTime() / 1000ul) + "/" + String(PIDHumidity.getOffTime() / 1000ul) + " сек)";
+    sett.updater().update(dbParams::HumidityPidDuty, _pidDuty);
+  }
 
   if (!db[TemperatureModeIn].toBool()) {
     sett.updater().updatePlot<float>(dbParams::TemperaturePlotIn, {GreenHouse.Sensors.dht22in.Temperature.Value()});
@@ -621,6 +649,15 @@ inline void WebAction(const size_t Param, const Text Value) {
     case dbParams::MqttPublishDelay:
       mqtt.setPublishDelay(Value.toInt() * 1000ul);
       break;
+
+    case dbParams::HumidityKp:
+    case dbParams::HumidityKi:
+    case dbParams::HumidityKd:
+    case dbParams::HumiditySetpoint:
+    case dbParams::HumidityAlarmThresholdLow:
+    case dbParams::HumidityAlarmThresholdHigh:
+      PIDHumidityUpdate();
+      break;
   }
 }
 
@@ -739,6 +776,14 @@ inline void WebBuild(sets::Builder &b) {
         b.Slider(dbParams::HumidityWettingDelay, "Проверка через", 1, 60, 1, " сек");
         b.Slider(dbParams::HumidityWettingEffectiveThreshold, "Порог эффективности", 0, 5, 0.1, " %");
         b.Slider(dbParams::HumidityWettingNoEffectDelay, "Повторная попытка через", 0, 60, 1, " мин");
+        b.endGroup();
+      }
+      if (b.beginGroup("🎛️ PID (тень)")) {
+        b.Slider(dbParams::HumiditySetpoint, "Уставка", 0, 90, 0.5, " %");
+        b.Slider(dbParams::HumidityKp, "Kp", 0, 20, 0.1, "");
+        b.Slider(dbParams::HumidityKi, "Ki", 0, 1, 0.01, "");
+        b.Slider(dbParams::HumidityKd, "Kd", 0, 20, 0.1, "");
+        b.Label(dbParams::HumidityPidDuty, "Выход", String("-"), sets::Colors::Gray);
         b.endGroup();
       }
       b.endMenu();
@@ -1505,6 +1550,12 @@ void setup() {
   db.init(dbParams::HumidityWettingDuration, (uint)10);
   db.init(dbParams::HumidityWettingDelay, (uint)30);
 
+  db.init(dbParams::HumiditySetpoint, (float)70);
+  db.init(dbParams::HumidityKp, (float)2);
+  db.init(dbParams::HumidityKi, (float)0.01);
+  db.init(dbParams::HumidityKd, (float)0);
+  db.init(dbParams::HumidityPidDuty, (Text) "-");
+
   db.init(dbParams::CO2ControlEnabled, (bool)0);
   db.init(dbParams::CO2AlarmThresholdHigh, (float)1500);
   db.init(dbParams::CO2FanDuration, (uint)5);
@@ -1575,6 +1626,10 @@ void setup() {
   GreenHouse.Sensors.dht22in.setHumidityHysteresis(db[HumidityHysteresis].toFloat());
   GreenHouse.Sensors.mhz19in.setCO2Hysteresis(db[CO2Hysteresis].toFloat());
 
+  PIDHumidity.setWindow(PID_WINDOW_DEFAULT);
+  PIDHumidity.setSampleTime(PID_SAMPLE_DEFAULT);
+  PIDHumidityUpdate();
+
   GreenHouse.Sensors.dht22in.Temperature.OnGetPrefix(GetTemperatureInPrefix);
   GreenHouse.Sensors.dht22in.Humidity.OnGetPrefix(GetHumidityInPrefix);
   GreenHouse.Sensors.mhz19in.CO2.OnGetPrefix(GetCO2InPrefix);
@@ -1636,6 +1691,8 @@ void loop() {
   sett.tick();
   GreenHouse.Tick();
   HC.Tick();
+
+  PIDHumidity.Tick(GreenHouse.Sensors.dht22in.Humidity.Value(), GreenHouse.Sensors.dht22in.IsValid());
 
   p.Tick();
 }

@@ -420,7 +420,13 @@ enum dbParams : size_t {
   MqttUser,
   MqttPassword,
 
-  MqttPublishDelay
+  MqttPublishDelay,
+
+  HumiditySetpoint,
+  HumidityKp,
+  HumidityKi,
+  HumidityKd,
+  HumidityPidDuty
 };
 
 const char *dbParamsName[] PROGMEM = {
@@ -561,9 +567,15 @@ const char *dbParamsName[] PROGMEM = {
     "MqttUser",
     "MqttPassword",
 
-    "MqttPublishDelay"};
+    "MqttPublishDelay",
 
-static_assert(sizeof(dbParamsName) / sizeof(dbParamsName[0]) == MqttPublishDelay + 1, "dbParamsName out of sync with dbParams");
+    "HumiditySetpoint",
+    "HumidityKp",
+    "HumidityKi",
+    "HumidityKd",
+    "HumidityPidDuty"};
+
+static_assert(sizeof(dbParamsName) / sizeof(dbParamsName[0]) == HumidityPidDuty + 1, "dbParamsName out of sync with dbParams");
 
 class _UsingIniciator {
 protected:
