@@ -91,13 +91,16 @@ inline void WebUpdate() {
   Params[dbParams::HumidityModeOut]    = db[HumidityModeOut];
   Params[dbParams::CO2ModeOut]         = db[CO2ModeOut];
 
-  static ulong _reloadMillis = 0;
+  static ulong _reloadMillis  = 0;
+  static bool  _reloadPending = false;
 
-  if (Params.IsChanged()) {
-    if ((_reloadMillis > 0) && ((millis() - _reloadMillis) < 3000ul))
-      return;
+  if (Params.IsChanged())
+    _reloadPending = true;
 
-    _reloadMillis = millis();
+  if (_reloadPending &&
+      ((_reloadMillis == 0) || ((millis() - _reloadMillis) >= 3000ul))) {
+    _reloadPending = false;
+    _reloadMillis  = millis();
 
     debug.tprintln("Params.IsChanged()");
 
@@ -127,7 +130,7 @@ inline void AlertsUpdate() {
 
   float _midTemperature = (db[TemperatureAlarmThresholdHigh].toFloat() + db[TemperatureAlarmThresholdLow].toFloat()) / 2;
   float _midHumidity    = (db[HumidityAlarmThresholdHigh].toFloat() + db[HumidityAlarmThresholdLow].toFloat()) / 2;
-  float _midCO2         = db[CO2AlarmThresholdHigh].toFloat();
+  float _midCO2         = db[CO2AlarmThresholdHigh].toFloat() - (db[CO2Hysteresis].toFloat() / 2);
 
   if (db[TemperatureControlEnabled].toBool() && GreenHouse.Sensors.dht22in.IsValid()) {
     switch (Temperature.State()) {
@@ -246,8 +249,7 @@ inline void AlertsUpdate() {
         } else {
           if (!Humidifier.IsWorking() &&
               !HumidityIn.IsUp() &&
-              (HumidityIn.IsUpBy() < db[HumidityWettingEffectiveThreshold].toFloat()) &&
-              (HumidityIn.IsDownBy() < (db[HumidityWettingEffectiveThreshold].toFloat()))) {
+              (HumidityIn.IsUpBy() < db[HumidityWettingEffectiveThreshold].toFloat())) {
             //
             if (Temperature.StateIs(_AlertState::High) ||
                 CO2.StateIs(_AlertState::High))
@@ -412,18 +414,19 @@ inline void DevicesUpdate() {
           !TemperatureIn.IsDown(5000)) {
         TemperatureIn.Stat.Reload();
         FanMain.Start(&Temperature,
-                      db[TemperatureFanDuration].toInt() * 1000ul,
+                      max(1000ul, db[TemperatureFanDuration].toInt() * 1000ul),
                       db[TemperatureFanDelay].toInt() * 1000ul,
                       1);
       }
       break;
 
     case _AlertState::Low:
-      if (!Heater.IsWorking() &&
+      if (!CO2.StateIs(_AlertState::High) &&
+          !Heater.IsWorking() &&
           !TemperatureIn.IsUp(5000)) {
         TemperatureIn.Stat.Reload();
         Heater.Start(&Temperature,
-                     db[TemperatureHeatingDuration].toInt() * 60ul * 1000ul,
+                     max(60000ul, db[TemperatureHeatingDuration].toInt() * 60ul * 1000ul),
                      db[TemperatureHeatingDelay].toInt() * 60ul * 1000ul,
                      1);
       }
@@ -443,7 +446,7 @@ inline void DevicesUpdate() {
           !HumidityIn.IsDown(5000)) {
         HumidityIn.Stat.Reload();
         FanMain.Start(&Humidity,
-                      db[HumidityFanDuration].toInt() * 1000ul,
+                      max(1000ul, db[HumidityFanDuration].toInt() * 1000ul),
                       db[HumidityFanDelay].toInt() * 1000ul,
                       1);
       }
@@ -452,7 +455,9 @@ inline void DevicesUpdate() {
     case _AlertState::Low:
       FanInner.Start(&Humidity);
 
-      if (!Humidifier.IsWorking() &&
+      if (!Temperature.StateIs(_AlertState::High) &&
+          !CO2.StateIs(_AlertState::High) &&
+          !Humidifier.IsWorking() &&
           !HumidityIn.IsUp(5000)) {
         if (HumidityIn.Stat.IsValid) {
           HC.put(HumidityIn.Stat.ValueFrom,
@@ -473,7 +478,7 @@ inline void DevicesUpdate() {
         debug.tprintf("predict = %lu\n", predict);
 
         if (predict < 1)
-          predict = db[HumidityWettingDuration].toInt() * 1000ul;
+          predict = max(1000ul, db[HumidityWettingDuration].toInt() * 1000ul);
 
         Humidifier.Start(&Humidity,
                          //  db[HumidityWettingDuration].toInt() * 1000ul,
@@ -497,7 +502,7 @@ inline void DevicesUpdate() {
           !CO2In.IsDown(5000)) {
         CO2In.Stat.Reload();
         FanMain.Start(&CO2,
-                      db[CO2FanDuration].toInt() * 1000ul,
+                      max(1000ul, db[CO2FanDuration].toInt() * 1000ul),
                       db[CO2FanDelay].toInt() * 1000ul,
                       1);
       }
@@ -697,15 +702,15 @@ inline void WebBuild(sets::Builder &b) {
       b.Slider(dbParams::TemperatureHysteresis, "Отсекать колебания", 0, 10, 0.1, " °C");
 
       if (b.beginGroup("💨 Вентиляция")) {
-        b.Slider(dbParams::TemperatureFanDuration, "Продолжительность", 0, 60, 1, " сек");
-        b.Slider(dbParams::TemperatureFanDelay, "Проверка через", 0, 60, 1, " сек");
+        b.Slider(dbParams::TemperatureFanDuration, "Продолжительность", 1, 60, 1, " сек");
+        b.Slider(dbParams::TemperatureFanDelay, "Проверка через", 1, 60, 1, " сек");
         b.Slider(dbParams::TemperatureFanEffectiveThreshold, "Порог эффективности", 0, 5, 0.1, " °C");
         b.Slider(dbParams::TemperatureFanNoEffectDelay, "Повторная попытка через", 0, 60, 1, " мин");
         b.endGroup();
       }
       if (b.beginGroup("♨️ Подогрев")) {
-        b.Slider(dbParams::TemperatureHeatingDuration, "Продолжительность", 0, 60, 1, " мин");
-        b.Slider(dbParams::TemperatureHeatingDelay, "Проверка через", 0, 60, 1, " мин");
+        b.Slider(dbParams::TemperatureHeatingDuration, "Продолжительность", 1, 60, 1, " мин");
+        b.Slider(dbParams::TemperatureHeatingDelay, "Проверка через", 1, 60, 1, " мин");
         b.Slider(dbParams::TemperatureHeatingEffectiveThreshold, "Порог эффективности", 0, 5, 0.1, " °C");
         b.Slider(dbParams::TemperatureHeatingNoEffectDelay, "Повторная попытка через", 0, 60, 1, " мин");
         b.endGroup();
@@ -723,15 +728,15 @@ inline void WebBuild(sets::Builder &b) {
       b.Slider(dbParams::HumidityHysteresis, "Отсекать колебания", 0, 10, 0.1, " %");
 
       if (b.beginGroup("💨 Вентиляция")) {
-        b.Slider(dbParams::HumidityFanDuration, "Продолжительность", 0, 60, 1, " сек");
-        b.Slider(dbParams::HumidityFanDelay, "Проверка через", 0, 60, 1, " сек");
+        b.Slider(dbParams::HumidityFanDuration, "Продолжительность", 1, 60, 1, " сек");
+        b.Slider(dbParams::HumidityFanDelay, "Проверка через", 1, 60, 1, " сек");
         b.Slider(dbParams::HumidityFanEffectiveThreshold, "Порог эффективности", 0, 5, 0.1, " %");
         b.Slider(dbParams::HumidityFanNoEffectDelay, "Повторная попытка через", 0, 60, 1, " мин");
         b.endGroup();
       }
       if (b.beginGroup("💦 Увлажнение")) {
-        b.Slider(dbParams::HumidityWettingDuration, "Продолжительность", 0, 60, 1, " сек");
-        b.Slider(dbParams::HumidityWettingDelay, "Проверка через", 0, 60, 1, " сек");
+        b.Slider(dbParams::HumidityWettingDuration, "Продолжительность", 1, 60, 1, " сек");
+        b.Slider(dbParams::HumidityWettingDelay, "Проверка через", 1, 60, 1, " сек");
         b.Slider(dbParams::HumidityWettingEffectiveThreshold, "Порог эффективности", 0, 5, 0.1, " %");
         b.Slider(dbParams::HumidityWettingNoEffectDelay, "Повторная попытка через", 0, 60, 1, " мин");
         b.endGroup();
@@ -749,8 +754,8 @@ inline void WebBuild(sets::Builder &b) {
       b.Slider(dbParams::CO2Hysteresis, "Отсекать колебания", 0, 100, 1, " ppm");
 
       if (b.beginGroup("💨 Вентиляция")) {
-        b.Slider(dbParams::CO2FanDuration, "Продолжительность", 0, 60, 1, " сек");
-        b.Slider(dbParams::CO2FanDelay, "Проверка через", 0, 60, 1, " сек");
+        b.Slider(dbParams::CO2FanDuration, "Продолжительность", 1, 60, 1, " сек");
+        b.Slider(dbParams::CO2FanDelay, "Проверка через", 1, 60, 1, " сек");
         b.Slider(dbParams::CO2FanEffectiveThreshold, "Порог эффективности", 0, 500, 10, " ppm");
         b.Slider(dbParams::CO2FanNoEffectDelay, "Повторная попытка через", 0, 60, 1, " мин");
         b.endGroup();
