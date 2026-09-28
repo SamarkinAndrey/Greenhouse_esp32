@@ -51,8 +51,15 @@ private:
 
     _OffsetSave = _Readings2->Offset();
 
-    _Readings1->setStatEnabled(this, true);
-    _Readings2->setStatEnabled(this, true);
+    bool _stat1 = _Readings1->setStatEnabled(this, true);
+    bool _stat2 = _Readings2->setStatEnabled(this, true);
+
+    if (!_stat1 || !_stat2) {
+      _Readings1->setStatEnabled(this, false);
+      _Readings2->setStatEnabled(this, false);
+
+      return false;
+    }
 
     _Readings2->setOffset(0);
     _Readings2->Stack.clear();

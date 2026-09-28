@@ -845,13 +845,15 @@ public:
     return Stat.IsDownBy();
   }
 
-  void setStatEnabled(void *Iniciator, bool Value = false) {
+  bool setStatEnabled(void *Iniciator, bool Value = false) {
     if (_Iniciator && (_Iniciator != Iniciator))
-      return;
+      return false;
 
     _Iniciator = Value ? Iniciator : nullptr;
 
     Stat.setEnabled(Value);
+
+    return true;
   }
 
   bool StatEnabled() {
