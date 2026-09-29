@@ -38,6 +38,20 @@ inline void PIDHumidityUpdate() {
   PIDHumidity.setTunings(db[dbParams::HumidityKp].toFloat(), db[dbParams::HumidityKi].toFloat(), db[dbParams::HumidityKd].toFloat());
 }
 
+_PIDControl PIDCO2(_SubType::CO2);
+
+inline float CO2Diff() {
+  float _out = GreenHouse.Sensors.mhz19out.CO2.Value();
+  if (_out < 1)
+    return GreenHouse.Sensors.mhz19in.CO2.Value();
+  return GreenHouse.Sensors.mhz19in.CO2.Value() - _out;
+}
+
+inline void PIDCO2Update() {
+  PIDCO2.setSetpoint(db[dbParams::CO2PidSetpoint].toFloat());
+  PIDCO2.setTunings(db[dbParams::CO2PidKp].toFloat(), db[dbParams::CO2PidKi].toFloat(), db[dbParams::CO2PidKd].toFloat());
+}
+
 _PIDControl PIDTemperature(_SubType::Temperature);
 
 inline void PIDTemperatureUpdate() {
@@ -93,6 +107,11 @@ inline void WebUpdate() {
   if (PIDTemperature.LastComputeValid()) {
     String _pidDuty = String(PIDTemperature.getHeatDuty() * 100.0f, 1) + "/" + String(PIDTemperature.getCoolDuty() * 100.0f, 1) + " %";
     sett.updater().update(dbParams::TemperaturePidDuty, _pidDuty);
+  }
+
+  if (PIDCO2.LastComputeValid()) {
+    String _pidDuty = String(PIDCO2.getOutputPercent(), 1) + " % (" + String(PIDCO2.getOnTime() / 1000ul) + "/" + String(PIDCO2.getOffTime() / 1000ul) + " сек)";
+    sett.updater().update(dbParams::CO2PidDuty, _pidDuty);
   }
 
   if (!db[TemperatureModeIn].toBool()) {
@@ -386,23 +405,20 @@ inline void AlertsUpdate() {
   if (db[CO2ControlEnabled].toBool() && GreenHouse.Sensors.mhz19in.IsValid()) {
     switch (CO2.State()) {
       case _AlertState::Idle:
-        if ((CO2In.Value() > db[CO2AlarmThresholdHigh].toFloat()) &&
-            ((CO2Out.Value() < 1) || CO2In.GreaterThen(CO2Out)))
+        if (CO2Diff() > db[CO2AlarmThresholdHigh].toFloat())
           CO2.setState(_AlertState::High);
 
         break;
 
       case _AlertState::High:
-        if ((CO2In.Value() <= _midCO2) ||
-            ((CO2Out.Value() > 0) && CO2In.SmallerOrEqualTo(CO2Out))) {
+        if (CO2Diff() <= _midCO2) {
           CO2.setState(_AlertState::Idle);
         } else {
           if (!FanMain.IsWorking() &&
               !CO2In.IsDown() &&
               (CO2In.IsDownBy() < db[CO2FanEffectiveThreshold].toFloat())) {
             //
-            if ((CO2In.Value() > db[CO2AlarmThresholdHigh].toFloat()) &&
-                ((CO2Out.Value() < 1) || CO2In.GreaterThen(CO2Out)))
+            if (CO2Diff() > db[CO2AlarmThresholdHigh].toFloat())
               CO2.setState(_AlertState::HighNoEffect);
             else
               CO2.setState(_AlertState::Idle);
@@ -419,8 +435,7 @@ inline void AlertsUpdate() {
       case _AlertState::HighNoEffect:
         if ((db[CO2FanNoEffectDelay].toInt() > 0) &&
             ((millis() - CO2.PrevAlert.StopMillis) > (db[CO2FanNoEffectDelay].toInt() * 60000ul))) {
-          if ((CO2In.Value() > db[CO2AlarmThresholdHigh].toFloat()) &&
-              ((CO2Out.Value() < 1) || CO2In.GreaterThen(CO2Out)))
+          if (CO2Diff() > db[CO2AlarmThresholdHigh].toFloat())
             CO2.setState(_AlertState::High);
           else
             CO2.setState(_AlertState::Idle);
@@ -694,6 +709,13 @@ inline void WebAction(const size_t Param, const Text Value) {
     case dbParams::TemperatureAlarmThresholdHigh:
       PIDTemperatureUpdate();
       break;
+
+    case dbParams::CO2PidKp:
+    case dbParams::CO2PidKi:
+    case dbParams::CO2PidKd:
+    case dbParams::CO2PidSetpoint:
+      PIDCO2Update();
+      break;
   }
 }
 
@@ -805,7 +827,7 @@ inline void WebBuild(sets::Builder &b) {
     b.Switch(dbParams::HumidityControlEnabled, "Влажность");
 
     if (b.beginMenu("Настройки")) {
-      b.Slider2(dbParams::HumidityAlarmThresholdLow, dbParams::HumidityAlarmThresholdHigh, "Поддерживать", 0, 90, 0.5, " %");
+      b.Slider2(dbParams::HumidityAlarmThresholdLow, dbParams::HumidityAlarmThresholdHigh, "Поддерживать", 0, 100, 0.5, " %");
       b.Slider(dbParams::HumidityHysteresis, "Отсекать колебания", 0, 10, 0.1, " %");
 
       if (b.beginGroup("💨 Вентиляция")) {
@@ -823,7 +845,7 @@ inline void WebBuild(sets::Builder &b) {
         b.endGroup();
       }
       if (b.beginGroup("🎛️ PID (тень)")) {
-        b.Slider(dbParams::HumiditySetpoint, "Уставка", 0, 90, 0.5, " %");
+        b.Slider(dbParams::HumiditySetpoint, "Уставка", 0, 100, 0.5, " %");
         b.Slider(dbParams::HumidityKp, "Kp", 0, 20, 0.1, "");
         b.Slider(dbParams::HumidityKi, "Ki", 0, 1, 0.01, "");
         b.Slider(dbParams::HumidityKd, "Kd", 0, 20, 0.1, "");
@@ -839,7 +861,7 @@ inline void WebBuild(sets::Builder &b) {
     b.Switch(dbParams::CO2ControlEnabled, "CO2");
 
     if (b.beginMenu("Настройки")) {
-      b.Slider(dbParams::CO2AlarmThresholdHigh, "Порог срабатывания", 400, CO2_MAX_RANGE, 50, " ppm");
+      b.Slider(dbParams::CO2AlarmThresholdHigh, "Порог срабатывания", 0, 500, 10, " ppm");
       b.Slider(dbParams::CO2Hysteresis, "Отсекать колебания", 0, 100, 1, " ppm");
 
       if (b.beginGroup("💨 Вентиляция")) {
@@ -847,6 +869,15 @@ inline void WebBuild(sets::Builder &b) {
         b.Slider(dbParams::CO2FanDelay, "Проверка через", 1, 60, 1, " сек");
         b.Slider(dbParams::CO2FanEffectiveThreshold, "Порог эффективности", 0, 500, 10, " ppm");
         b.Slider(dbParams::CO2FanNoEffectDelay, "Повторная попытка через", 0, 60, 1, " мин");
+        b.endGroup();
+      }
+
+      if (b.beginGroup("🎛️ PID (тень)")) {
+        b.Slider(dbParams::CO2PidSetpoint, "Уставка разницы", 0, 500, 10, " ppm");
+        b.Slider(dbParams::CO2PidKp, "Kp", 0, 20, 0.1, "");
+        b.Slider(dbParams::CO2PidKi, "Ki", 0, 1, 0.01, "");
+        b.Slider(dbParams::CO2PidKd, "Kd", 0, 20, 0.1, "");
+        b.Label(dbParams::CO2PidDuty, "Выход", String("-"), sets::Colors::Gray);
         b.endGroup();
       }
       b.endMenu();
@@ -1579,32 +1610,38 @@ void setup() {
   db.init(dbParams::SensorScanDelay, (uint)2);
 
   db.init(dbParams::TemperatureControlEnabled, (bool)0);
-  db.init(dbParams::TemperatureAlarmThresholdLow, (float)25);
-  db.init(dbParams::TemperatureAlarmThresholdHigh, (float)30);
+  db.init(dbParams::TemperatureAlarmThresholdLow, (float)15);
+  db.init(dbParams::TemperatureAlarmThresholdHigh, (float)19);
   db.init(dbParams::TemperatureFanDuration, (uint)5);
   db.init(dbParams::TemperatureFanDelay, (uint)20);
   db.init(dbParams::TemperatureHeatingDuration, (uint)5);
   db.init(dbParams::TemperatureHeatingDelay, (uint)10);
 
   db.init(dbParams::HumidityControlEnabled, (bool)0);
-  db.init(dbParams::HumidityAlarmThresholdLow, (float)60);
-  db.init(dbParams::HumidityAlarmThresholdHigh, (float)80);
+  db.init(dbParams::HumidityAlarmThresholdLow, (float)85);
+  db.init(dbParams::HumidityAlarmThresholdHigh, (float)95);
   db.init(dbParams::HumidityFanDuration, (uint)5);
   db.init(dbParams::HumidityFanDelay, (uint)20);
   db.init(dbParams::HumidityWettingDuration, (uint)10);
   db.init(dbParams::HumidityWettingDelay, (uint)30);
 
-  db.init(dbParams::HumiditySetpoint, (float)70);
+  db.init(dbParams::HumiditySetpoint, (float)90);
   db.init(dbParams::HumidityKp, (float)2);
   db.init(dbParams::HumidityKi, (float)0.01);
   db.init(dbParams::HumidityKd, (float)0);
   db.init(dbParams::HumidityPidDuty, (Text) "-");
 
-  db.init(dbParams::TemperatureSetpoint, (float)27.5);
+  db.init(dbParams::TemperatureSetpoint, (float)17);
   db.init(dbParams::TemperatureKp, (float)2);
   db.init(dbParams::TemperatureKi, (float)0.005);
   db.init(dbParams::TemperatureKd, (float)0);
   db.init(dbParams::TemperaturePidDuty, (Text) "-");
+
+  db.init(dbParams::CO2PidSetpoint, (float)100);
+  db.init(dbParams::CO2PidKp, (float)0);
+  db.init(dbParams::CO2PidKi, (float)0.05);
+  db.init(dbParams::CO2PidKd, (float)0);
+  db.init(dbParams::CO2PidDuty, (Text) "-");
 
   db.init(dbParams::CO2ControlEnabled, (bool)0);
   db.init(dbParams::CO2AlarmThresholdHigh, (float)1500);
@@ -1678,12 +1715,19 @@ void setup() {
 
   PIDHumidity.setWindow(PID_WINDOW_DEFAULT);
   PIDHumidity.setSampleTime(PID_SAMPLE_DEFAULT);
+  PIDHumidity.setDutyMin(5000ul, 5000ul);
   PIDHumidityUpdate();
 
   PIDTemperature.setOutputLimits(-100, 100);
   PIDTemperature.setWindow(PID_WINDOW_DEFAULT);
   PIDTemperature.setSampleTime(PID_SAMPLE_DEFAULT);
+  PIDTemperature.setDutyMin(30000ul, 30000ul);
   PIDTemperatureUpdate();
+
+  PIDCO2.setWindow(PID_WINDOW_DEFAULT);
+  PIDCO2.setSampleTime(PID_SAMPLE_DEFAULT);
+  PIDCO2.setDutyMin(5000ul, 5000ul);
+  PIDCO2Update();
 
   GreenHouse.Sensors.dht22in.Temperature.OnGetPrefix(GetTemperatureInPrefix);
   GreenHouse.Sensors.dht22in.Humidity.OnGetPrefix(GetHumidityInPrefix);
@@ -1749,6 +1793,7 @@ void loop() {
 
   PIDHumidity.Tick(GreenHouse.Sensors.dht22in.Humidity.Value(), GreenHouse.Sensors.dht22in.IsValid());
   PIDTemperature.Tick(GreenHouse.Sensors.dht22in.Temperature.Value(), GreenHouse.Sensors.dht22in.IsValid());
+  PIDCO2.Tick(CO2Diff(), GreenHouse.Sensors.mhz19in.IsValid());
 
   p.Tick();
 }

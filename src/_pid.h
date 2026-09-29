@@ -9,8 +9,8 @@
 #define PID_SAMPLE_MIN      10000ul
 #define PID_DUTY_MIN_ON     2000ul
 #define PID_DUTY_MIN_OFF    2000ul
-#define PID_WINDOW_DEFAULT  600000ul
-#define PID_SAMPLE_DEFAULT  60000ul
+#define PID_WINDOW_DEFAULT  300000ul
+#define PID_SAMPLE_DEFAULT  20000ul
 
 class _PIDControl : public _ClassType {
 private:
@@ -28,6 +28,9 @@ private:
 
   float _HeatDuty = 0.0f;
   float _CoolDuty = 0.0f;
+
+  ulong _DutyMinOn  = PID_DUTY_MIN_ON;
+  ulong _DutyMinOff = PID_DUTY_MIN_OFF;
 
   bool _LastComputeValid = false;
 
@@ -50,11 +53,11 @@ private:
     _OnTime  = (ulong)(_Window * _heat);
     _OffTime = _Window - _OnTime;
 
-    if (_OnTime > 0 && _OnTime < PID_DUTY_MIN_ON)
-      _OnTime = PID_DUTY_MIN_ON;
+    if (_OnTime > 0 && _OnTime < _DutyMinOn)
+      _OnTime = _DutyMinOn;
 
-    if (_OffTime > 0 && _OffTime < PID_DUTY_MIN_OFF)
-      _OffTime = PID_DUTY_MIN_OFF;
+    if (_OffTime > 0 && _OffTime < _DutyMinOff)
+      _OffTime = _DutyMinOff;
   }
 
 public:
@@ -90,6 +93,12 @@ public:
     if (Window < PID_WINDOW_MIN)
       Window = PID_WINDOW_MIN;
     _Window = Window;
+    _updateDuty();
+  }
+
+  void setDutyMin(ulong MinOn, ulong MinOff) {
+    _DutyMinOn  = (MinOn > 0) ? MinOn : PID_DUTY_MIN_ON;
+    _DutyMinOff = (MinOff > 0) ? MinOff : PID_DUTY_MIN_OFF;
     _updateDuty();
   }
 
