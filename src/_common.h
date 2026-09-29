@@ -132,7 +132,7 @@
 #define HEATER_PIN     25
 #define HUMIDIFIER_PIN 26
 
-#define CO2_MAX_RANGE      5000
+
 #define MHZ19_HEATING_TIME 1000ul * 60ul * 3UL
 
 #define WIFI_SSID "****"
