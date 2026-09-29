@@ -26,16 +26,28 @@ private:
   ulong _OnTime  = 0;
   ulong _OffTime = 0;
 
+  float _HeatDuty = 0.0f;
+  float _CoolDuty = 0.0f;
+
   bool _LastComputeValid = false;
 
   void _updateDuty() {
-    float _duty = (float)_Output / 100.0f;
-    if (_duty < 0.0f)
-      _duty = 0.0f;
-    if (_duty > 1.0f)
-      _duty = 1.0f;
+    float _heat = (float)_Output / 100.0f;
+    if (_heat < 0.0f)
+      _heat = 0.0f;
+    if (_heat > 1.0f)
+      _heat = 1.0f;
 
-    _OnTime  = (ulong)(_Window * _duty);
+    float _cool = (float)(-_Output) / 100.0f;
+    if (_cool < 0.0f)
+      _cool = 0.0f;
+    if (_cool > 1.0f)
+      _cool = 1.0f;
+
+    _HeatDuty = _heat;
+    _CoolDuty = _cool;
+
+    _OnTime  = (ulong)(_Window * _heat);
     _OffTime = _Window - _OnTime;
 
     if (_OnTime > 0 && _OnTime < PID_DUTY_MIN_ON)
@@ -56,6 +68,11 @@ public:
 
   void setTunings(float Kp, float Ki, float Kd) {
     _PID.SetTunings((double)Kp, (double)Ki, (double)Kd);
+  }
+
+  void setOutputLimits(double Min, double Max) {
+    _PID.SetOutputLimits(Min, Max);
+    _updateDuty();
   }
 
   void setSetpoint(float Setpoint) {
@@ -80,6 +97,14 @@ public:
     return (float)_Output;
   }
 
+  float getHeatDuty() const {
+    return _HeatDuty;
+  }
+
+  float getCoolDuty() const {
+    return _CoolDuty;
+  }
+
   ulong getOnTime() const {
     return _OnTime;
   }
@@ -98,6 +123,8 @@ public:
       _Output = 0.0;
       _OnTime = 0;
       _OffTime = 0;
+      _HeatDuty = 0.0f;
+      _CoolDuty = 0.0f;
       _LastComputeValid = false;
       return false;
     }
@@ -113,11 +140,13 @@ public:
     _updateDuty();
     _LastComputeValid = true;
 
-    debug.tprintf("PID %s: PV=%.2f SP=%.2f out=%.1f%% on=%lu off=%lu\n",
+    debug.tprintf("PID %s: PV=%.2f SP=%.2f out=%.1f%% heat=%.1f%% cool=%.1f%% on=%lu off=%lu\n",
                   Name(),
                   (float)_Input,
                   (float)_Setpoint,
                   (float)_Output,
+                  _HeatDuty * 100.0f,
+                  _CoolDuty * 100.0f,
                   _OnTime,
                   _OffTime);
 

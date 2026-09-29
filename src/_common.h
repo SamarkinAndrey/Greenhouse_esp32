@@ -426,7 +426,13 @@ enum dbParams : size_t {
   HumidityKp,
   HumidityKi,
   HumidityKd,
-  HumidityPidDuty
+  HumidityPidDuty,
+
+  TemperatureSetpoint,
+  TemperatureKp,
+  TemperatureKi,
+  TemperatureKd,
+  TemperaturePidDuty
 };
 
 const char *dbParamsName[] PROGMEM = {
@@ -573,9 +579,15 @@ const char *dbParamsName[] PROGMEM = {
     "HumidityKp",
     "HumidityKi",
     "HumidityKd",
-    "HumidityPidDuty"};
+    "HumidityPidDuty",
 
-static_assert(sizeof(dbParamsName) / sizeof(dbParamsName[0]) == HumidityPidDuty + 1, "dbParamsName out of sync with dbParams");
+    "TemperatureSetpoint",
+    "TemperatureKp",
+    "TemperatureKi",
+    "TemperatureKd",
+    "TemperaturePidDuty"};
+
+static_assert(sizeof(dbParamsName) / sizeof(dbParamsName[0]) == TemperaturePidDuty + 1, "dbParamsName out of sync with dbParams");
 
 class _UsingIniciator {
 protected:

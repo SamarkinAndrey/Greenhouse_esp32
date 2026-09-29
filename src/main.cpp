@@ -38,6 +38,28 @@ inline void PIDHumidityUpdate() {
   PIDHumidity.setTunings(db[dbParams::HumidityKp].toFloat(), db[dbParams::HumidityKi].toFloat(), db[dbParams::HumidityKd].toFloat());
 }
 
+_PIDControl PIDTemperature(_SubType::Temperature);
+
+inline void PIDTemperatureUpdate() {
+  float _low  = db[dbParams::TemperatureAlarmThresholdLow].toFloat();
+  float _high = db[dbParams::TemperatureAlarmThresholdHigh].toFloat();
+
+  if (_low > _high) {
+    float _swap = _low;
+    _low  = _high;
+    _high = _swap;
+  }
+
+  float _setpoint = db[dbParams::TemperatureSetpoint].toFloat();
+  if (_setpoint < _low)
+    _setpoint = _low;
+  if (_setpoint > _high)
+    _setpoint = _high;
+
+  PIDTemperature.setSetpoint(_setpoint);
+  PIDTemperature.setTunings(db[dbParams::TemperatureKp].toFloat(), db[dbParams::TemperatureKi].toFloat(), db[dbParams::TemperatureKd].toFloat());
+}
+
 struct _localParams {
   int  mhz19in_Range;
   int  mhz19out_Range;
@@ -66,6 +88,11 @@ inline void WebUpdate() {
   if (PIDHumidity.LastComputeValid()) {
     String _pidDuty = String(PIDHumidity.getOutputPercent(), 1) + " % (" + String(PIDHumidity.getOnTime() / 1000ul) + "/" + String(PIDHumidity.getOffTime() / 1000ul) + " сек)";
     sett.updater().update(dbParams::HumidityPidDuty, _pidDuty);
+  }
+
+  if (PIDTemperature.LastComputeValid()) {
+    String _pidDuty = String(PIDTemperature.getHeatDuty() * 100.0f, 1) + "/" + String(PIDTemperature.getCoolDuty() * 100.0f, 1) + " %";
+    sett.updater().update(dbParams::TemperaturePidDuty, _pidDuty);
   }
 
   if (!db[TemperatureModeIn].toBool()) {
@@ -658,6 +685,15 @@ inline void WebAction(const size_t Param, const Text Value) {
     case dbParams::HumidityAlarmThresholdHigh:
       PIDHumidityUpdate();
       break;
+
+    case dbParams::TemperatureKp:
+    case dbParams::TemperatureKi:
+    case dbParams::TemperatureKd:
+    case dbParams::TemperatureSetpoint:
+    case dbParams::TemperatureAlarmThresholdLow:
+    case dbParams::TemperatureAlarmThresholdHigh:
+      PIDTemperatureUpdate();
+      break;
   }
 }
 
@@ -750,6 +786,14 @@ inline void WebBuild(sets::Builder &b) {
         b.Slider(dbParams::TemperatureHeatingDelay, "Проверка через", 1, 60, 1, " мин");
         b.Slider(dbParams::TemperatureHeatingEffectiveThreshold, "Порог эффективности", 0, 5, 0.1, " °C");
         b.Slider(dbParams::TemperatureHeatingNoEffectDelay, "Повторная попытка через", 0, 60, 1, " мин");
+        b.endGroup();
+      }
+      if (b.beginGroup("🎛️ PID (тень)")) {
+        b.Slider(dbParams::TemperatureSetpoint, "Уставка", 0, 50, 0.5, " °C");
+        b.Slider(dbParams::TemperatureKp, "Kp", 0, 20, 0.1, "");
+        b.Slider(dbParams::TemperatureKi, "Ki", 0, 1, 0.01, "");
+        b.Slider(dbParams::TemperatureKd, "Kd", 0, 20, 0.1, "");
+        b.Label(dbParams::TemperaturePidDuty, "Выход нагрев/охлаждение", String("-"), sets::Colors::Gray);
         b.endGroup();
       }
       b.endMenu();
@@ -1556,6 +1600,12 @@ void setup() {
   db.init(dbParams::HumidityKd, (float)0);
   db.init(dbParams::HumidityPidDuty, (Text) "-");
 
+  db.init(dbParams::TemperatureSetpoint, (float)27.5);
+  db.init(dbParams::TemperatureKp, (float)2);
+  db.init(dbParams::TemperatureKi, (float)0.005);
+  db.init(dbParams::TemperatureKd, (float)0);
+  db.init(dbParams::TemperaturePidDuty, (Text) "-");
+
   db.init(dbParams::CO2ControlEnabled, (bool)0);
   db.init(dbParams::CO2AlarmThresholdHigh, (float)1500);
   db.init(dbParams::CO2FanDuration, (uint)5);
@@ -1630,6 +1680,11 @@ void setup() {
   PIDHumidity.setSampleTime(PID_SAMPLE_DEFAULT);
   PIDHumidityUpdate();
 
+  PIDTemperature.setOutputLimits(-100, 100);
+  PIDTemperature.setWindow(PID_WINDOW_DEFAULT);
+  PIDTemperature.setSampleTime(PID_SAMPLE_DEFAULT);
+  PIDTemperatureUpdate();
+
   GreenHouse.Sensors.dht22in.Temperature.OnGetPrefix(GetTemperatureInPrefix);
   GreenHouse.Sensors.dht22in.Humidity.OnGetPrefix(GetHumidityInPrefix);
   GreenHouse.Sensors.mhz19in.CO2.OnGetPrefix(GetCO2InPrefix);
@@ -1693,6 +1748,7 @@ void loop() {
   HC.Tick();
 
   PIDHumidity.Tick(GreenHouse.Sensors.dht22in.Humidity.Value(), GreenHouse.Sensors.dht22in.IsValid());
+  PIDTemperature.Tick(GreenHouse.Sensors.dht22in.Temperature.Value(), GreenHouse.Sensors.dht22in.IsValid());
 
   p.Tick();
 }
