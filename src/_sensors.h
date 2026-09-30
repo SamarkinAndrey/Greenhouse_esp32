@@ -3,13 +3,10 @@
 #include <DHT.h>
 #include <MHZ19.h>
 #include <Table.h>
-#include <dhtnew.h>
 
 #include "_classtype.h"
 #include "_common.h"
 
-#define DHT22_TEMPERATURE_ACCURACY  0.5f
-#define DHT22_HUMIDITY_ACCURACY     2.0f
 #define AM2320_TEMPERATURE_ACCURACY 0.5f
 #define AM2320_HUMIDITY_ACCURACY    3.0f
 #define MHZ19_CO2_ACCURACY          50.0f
@@ -85,10 +82,10 @@ private:
   float _Value = 0;
 
   void _setSize(size_t size_max = 0) {
-    if (IsEnabled() ? (size_max == _size_max) : (size_max < 2))
+    if (IsEnabled() ? (size_max == _size_max) : (size_max < 1))
       return;
 
-    if (size_max < 2) {
+    if (size_max < 1) {
       _Destroy();
 
       clear();
@@ -212,6 +209,7 @@ private:
     void clear() {
       Old     = 0;
       New     = 0;
+      Diff    = 0;
       Millis  = 0;
       IsValid = false;
     }
@@ -355,7 +353,9 @@ public:
       MillisFrom = _millis;
       ValueFrom  = Value;
       Min        = Value;
+      MinMillis  = _millis;
       Max        = Value;
+      MaxMillis  = _millis;
     }
 
     MillisTo = _millis;
@@ -614,7 +614,7 @@ private:
   _OnGetAccuracy _on_get_accuracy = nullptr;
   _OnGetText     _on_get_text     = nullptr;
   _OnGetPrefix   _on_get_prefix   = nullptr;
-  _OnGetPrefix   _on_get_postfix  = nullptr;
+  _OnGetPostfix  _on_get_postfix  = nullptr;
 
   void _getText() {
     if (_on_get_text)
@@ -623,28 +623,26 @@ private:
 
   void _getPrefix() {
     if (_on_get_prefix) {
-      char _buf[10];
+      char _buf[10] = "";
 
       _on_get_prefix(_buf);
 
-      if (strlen(_buf) > 0) {
-        strcpy(_Prefix, _buf);
-        strcat(_Prefix, " ");
-      } else
+      if (strlen(_buf) > 0)
+        snprintf(_Prefix, sizeof(_Prefix), "%s ", _buf);
+      else
         _Prefix[0] = '\0';
     }
   }
 
   void _getPostfix() {
     if (_on_get_postfix) {
-      char _buf[10];
+      char _buf[10] = "";
 
       _on_get_postfix(_buf);
 
-      if (strlen(_buf) > 0) {
-        strcpy(_Postfix, " ");
-        strcat(_Postfix, _buf);
-      } else
+      if (strlen(_buf) > 0)
+        snprintf(_Postfix, sizeof(_Postfix), " %s", _buf);
+      else
         _Postfix[0] = '\0';
     }
   }
@@ -685,13 +683,12 @@ public:
   }
 
   void setPrefix(const char *Prefix) {
-    char _buf[10];
+    char _buf[10] = "";
 
-    strcpy(_buf, Prefix);
+    strncpy(_buf, Prefix, sizeof(_buf) - 1);
 
     if (strlen(_buf) > 0) {
-      strcpy(_Prefix, _buf);
-      strcat(_Prefix, " ");
+      snprintf(_Prefix, sizeof(_Prefix), "%s ", _buf);
     } else
       _Prefix[0] = '\0';
   }
@@ -703,13 +700,12 @@ public:
   }
 
   void setPostfix(const char *Postfix) {
-    char _buf[10];
+    char _buf[10] = "";
 
-    strcpy(_buf, Postfix);
+    strncpy(_buf, Postfix, sizeof(_buf) - 1);
 
     if (strlen(_buf) > 0) {
-      strcpy(_Postfix, " ");
-      strcat(_Postfix, _buf);
+      snprintf(_Postfix, sizeof(_Postfix), " %s", _buf);
     } else
       _Postfix[0] = '\0';
   }
@@ -849,13 +845,15 @@ public:
     return Stat.IsDownBy();
   }
 
-  void setStatEnabled(void *Iniciator, bool Value = false) {
-    if (!Value && (_Iniciator != Iniciator))
-      return;
+  bool setStatEnabled(void *Iniciator, bool Value = false) {
+    if (_Iniciator && (_Iniciator != Iniciator))
+      return false;
 
-    _Iniciator = Iniciator;
+    _Iniciator = Value ? Iniciator : nullptr;
 
     Stat.setEnabled(Value);
+
+    return true;
   }
 
   bool StatEnabled() {
@@ -912,6 +910,11 @@ public:
 
       _result = getReadings();
     }
+
+    if (_result)
+      _FailCount = 0;
+    else if (++_FailCount < SENSOR_FAIL_COUNT)
+      return;
 
     if (!_setActive(_result))
       return;
@@ -974,6 +977,7 @@ public:
 protected:
   ulong _HeatingTime = 0;
   ulong _StartMillis = 0;
+  uint8_t _FailCount = 0;
 
   bool _IsActive = false;
 
@@ -1018,7 +1022,7 @@ public:
     Temperature.Stat.setSubType(_SubType::Temperature);
 
     Humidity.setSubType(_SubType::Humidity);
-    Humidity.History.setSubType(_SubType::Temperature);
+    Humidity.History.setSubType(_SubType::Humidity);
     Humidity.Stack.setSubType(_SubType::Humidity);
     Humidity.Stat.setSubType(_SubType::Humidity);
 
@@ -1134,38 +1138,6 @@ public:
   }
 };
 
-class _SensorDHT22 : public _SensorDHT {
-private:
-  DHTNEW _dht22;
-
-public:
-  _SensorDHT22(_SensorList &Sensors,
-               int          Pin,
-               size_t       TemperatureHistorySize = 0,
-               size_t       HumidityHistorySize    = 0,
-               size_t       TemperatureStackSize   = 0,
-               size_t       HumidityStackSize      = 0)
-      : _SensorDHT(Sensors,
-                   TemperatureHistorySize,
-                   HumidityHistorySize,
-                   TemperatureStackSize,
-                   HumidityStackSize),
-        _dht22(Pin) {
-    _dht22.setType(DHT_TYPE);
-
-    Temperature.setAccuracy(DHT22_TEMPERATURE_ACCURACY);
-    Humidity.setAccuracy(DHT22_HUMIDITY_ACCURACY);
-  }
-
-protected:
-  virtual bool getReadings() override {
-    _temperature = _dht22.getTemperature();
-    _humidity    = _dht22.getHumidity();
-
-    return (!isnan(_temperature) && !isnan(_humidity));
-  }
-};
-
 class _SensorAM2320 : public _SensorDHT {
 private:
   DHT _am2320;
@@ -1262,7 +1234,7 @@ public:
   }
 
   void setRange(int Value) {
-    if (!_IsActive || (Range = Value) || ((Value != 2000) && (Value != 5000)))
+    if (!_IsActive || ((Value != 2000) && (Value != 5000)))
       return;
 
     _mhz19.setRange(Value);
