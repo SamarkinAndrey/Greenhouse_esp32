@@ -26,6 +26,9 @@ private:
   char _PercentStr[50]     = "";
 
   void _Clear () {
+    if (_Timer.isEnabled())
+      _Timer.stop();
+
     _Readings1    = nullptr;
     _Readings2    = nullptr;
     _StartMillis  = 0;
@@ -48,8 +51,15 @@ private:
 
     _OffsetSave = _Readings2->Offset();
 
-    _Readings1->setStatEnabled(this, true);
-    _Readings2->setStatEnabled(this, true);
+    bool _stat1 = _Readings1->setStatEnabled(this, true);
+    bool _stat2 = _Readings2->setStatEnabled(this, true);
+
+    if (!_stat1 || !_stat2) {
+      _Readings1->setStatEnabled(this, false);
+      _Readings2->setStatEnabled(this, false);
+
+      return false;
+    }
 
     _Readings2->setOffset(0);
     _Readings2->Stack.clear();
@@ -98,17 +108,27 @@ public:
   }
 
   ulong MillisLeft() {
-    return (_StartMillis > 0) ? (_SyncInterval - (millis() - _StartMillis)) : 0;
+    if (_StartMillis < 1)
+      return 0;
+
+    ulong _elapsed = millis() - _StartMillis;
+
+    return (_elapsed < _SyncInterval) ? (_SyncInterval - _elapsed) : 0;
   }
 
   char *MillisLeftStr() {
-    MillisToTimeStr(_StartMillisStr, MillisLeft());
+    MillisToTimeStr(_StartMillisStr, sizeof(_StartMillisStr), MillisLeft());
 
     return _StartMillisStr;
   }
 
   float Percent() {
-    return (_StartMillis > 0) ? ((millis() - _StartMillis) * (float)100) / _SyncInterval : 0;
+    if ((_StartMillis < 1) || (_SyncInterval < 1))
+      return 0;
+
+    float _percent = ((millis() - _StartMillis) * (float)100) / _SyncInterval;
+
+    return (_percent > 100) ? 100 : _percent;
   }
 
   char *PercentStr() {
@@ -137,6 +157,9 @@ public:
     if (!Readings1 || !Readings2 || (Readings1->Type() != Readings2->Type()) || (SyncInterval < 1))
       return;
 
+    if (IsActive())
+      Cancel();
+
     _Readings1    = Readings1;
     _Readings2    = Readings2;
     _StartMillis  = millis();
@@ -146,8 +169,12 @@ public:
 
     debug.tprintf("%s.Start(%lu)\n", Name(), _SyncInterval);
 
-    if (_BeforeSync())
-      _Timer.setTimeout(_SyncInterval);
+    if (!_BeforeSync()) {
+      _Clear();
+      return;
+    }
+
+    _Timer.setTimeout(_SyncInterval);
   }
 
   void Cancel() {

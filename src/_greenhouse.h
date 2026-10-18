@@ -38,7 +38,7 @@ private:
   }
 
   bool _WebTick() {
-    if ((_SensorTickMillis > 0) && ((millis() - _WebTickMillis) > getWebUpdateInterval())) {
+    if ((_WebTickMillis == 0) || ((millis() - _WebTickMillis) > getWebUpdateInterval())) {
       _WebTickMillis = millis();
 
       WebUpdate();
@@ -101,16 +101,12 @@ public:
   void DevicesUpdate() {
     if (_on_devices_update) {
       _on_devices_update();
-
-      WebUpdate();
     }
   }
 
   void WebUpdate() {
     if (_on_web_update) {
       _on_web_update();
-
-      _WebTickMillis = millis();
     }
   }
 
@@ -118,6 +114,7 @@ public:
     _SensorsTick();
     _WebTick();
 
+    Sync.Tick();
     Devices.Tick();
     mqtt.Tick();
   }

@@ -3,9 +3,13 @@
 #include "_common.h"
 #include <PubSubClient.h>
 #include <WiFi.h>
+#include <esp_mac.h>
 
 #define MQTT_CONNECTION_CHECK_DELAY 30ul * 1000ul
 #define MQTT_PUBLISH_DELAY          5ul * 1000ul
+
+#define MQTT_TOPIC_SIZE 72
+#define MQTT_PAYLOAD_SIZE 52
 
 const dbParams mqttParams[] = {
     TemperatureControlEnabled,
@@ -79,16 +83,19 @@ private:
   ulong _PublishDelay         = MQTT_PUBLISH_DELAY;
 
   void _Connect() {
-    if (_PubSubClient.connected() && !IsInit())
+    if (_PubSubClient.connected() && IsInit())
       return;
 
     _PubSubClient.setServer(_server, _port);
 
     debug.tprintln("Connecting to MQTT...");
 
-    char hexID[10];
+    char hexID[24];
+    uint8_t _mac[6];
 
-    snprintf(hexID, sizeof(hexID), "0x%04X", random(0xffff));
+    esp_read_mac(_mac, ESP_MAC_WIFI_STA);
+
+    snprintf(hexID, sizeof(hexID), "gh_%02X%02X%02X", _mac[3], _mac[4], _mac[5]);
 
     if (_PubSubClient.connect(hexID, _user, _password)) {
       debug.tprintln("Connection established");
@@ -113,8 +120,8 @@ private:
     for (size_t i = 0; i < (sizeof(mqttParams) / sizeof(mqttParams[0])); i++) {
       dbParams param = mqttParams[i];
 
-      char _getTopic[50];
-      char _setTopic[50];
+      char _getTopic[MQTT_TOPIC_SIZE];
+      char _setTopic[MQTT_TOPIC_SIZE];
 
       getTopic(param, _getTopic, _setTopic);
 
@@ -134,8 +141,8 @@ private:
     for (size_t i = 0; i < (sizeof(mqttParams) / sizeof(mqttParams[0])); i++) {
       dbParams param = mqttParams[i];
 
-      char _getTopic[50];
-      char _setTopic[50];
+      char _getTopic[MQTT_TOPIC_SIZE];
+      char _setTopic[MQTT_TOPIC_SIZE];
 
       getTopic(param, _getTopic, _setTopic);
       Subscribe(_setTopic);
@@ -143,40 +150,40 @@ private:
   }
 
   void _Callback(char *topic, uint8_t *payload, uint length) {
-    if (length < 1 || length > 50)
+    if (length < 1 || length >= MQTT_PAYLOAD_SIZE)
       return;
 
-    char _topic[50];
+    char _topic[MQTT_TOPIC_SIZE];
     cutTopic(_topic, sizeof(_topic), topic);
 
-    char _payload[length + 1];
+    char _payload[MQTT_PAYLOAD_SIZE];
     memcpy(_payload, payload, length);
     _payload[length] = '\0';
 
     dbParams _param = dbParams::Undefined;
     bool _writed = false;
 
-    for (size_t i = 0; i < (sizeof(mqttParams) / sizeof(mqttParams[0])); i++) {
+    for (size_t i = 0; (i < (sizeof(mqttParams) / sizeof(mqttParams[0]))) && (_param == dbParams::Undefined); i++) {
+      char _getTopic[MQTT_TOPIC_SIZE];
+      char _setTopic[MQTT_TOPIC_SIZE];
+
+      getTopic(mqttParams[i], _getTopic, _setTopic);
+
+      if (strcmp(_topic, _setTopic) != 0)
+        continue;
+
       _param = mqttParams[i];
 
-      char _getTopic[50];
-      char _setTopic[50];
-
-      getTopic(_param, _getTopic, _setTopic);
-
-      if (strcmp(_topic, _setTopic) == 0) {
-        switch (db[_param].type()) {
-          case gdb::Type::Int:
-          case gdb::Type::Uint:
-            db[_param] = atoi(_payload);
-            _writed = true;
-            break;
-          case gdb::Type::Float:
-            db[_param] = atof(_payload);
-            _writed = true;
-            break;
-        }
-        return;
+      switch (db[_param].type()) {
+        case gdb::Type::Int:
+        case gdb::Type::Uint:
+          db[_param] = atoi(_payload);
+          _writed = true;
+          break;
+        case gdb::Type::Float:
+          db[_param] = atof(_payload);
+          _writed = true;
+          break;
       }
     }
 
@@ -250,7 +257,8 @@ public:
 
     char _param[50];
 
-    strncpy(_param, dbParamsName[param], sizeof(_param));
+    strncpy(_param, dbParamsName[param], sizeof(_param) - 1);
+    _param[sizeof(_param) - 1] = '\0';
 
     const char *category = "";
     if (strncmp(_param, "Temperature", 11) == 0) {
@@ -270,24 +278,15 @@ public:
     }
 
     if (category[0] != '\0') {
-      if (getTopic) {
-        strcpy(getTopic, category);
-        strcat(getTopic, "/");
-        strcat(getTopic, paramName);
-      }
-      if (setTopic) {
-        strcpy(setTopic, category);
-        strcat(setTopic, "/set");
-        strcat(setTopic, paramName);
-      }
+      if (getTopic)
+        snprintf(getTopic, MQTT_TOPIC_SIZE, "%s/%s", category, paramName);
+      if (setTopic)
+        snprintf(setTopic, MQTT_TOPIC_SIZE, "%s/set%s", category, paramName);
     } else {
-      if (getTopic) {
-        strcpy(getTopic, _param);
-      }
-      if (setTopic) {
-        strcpy(setTopic, "set");
-        strcat(setTopic, _param);
-      }
+      if (getTopic)
+        snprintf(getTopic, MQTT_TOPIC_SIZE, "%s", _param);
+      if (setTopic)
+        snprintf(setTopic, MQTT_TOPIC_SIZE, "set%s", _param);
     }
   }
 
@@ -295,10 +294,9 @@ public:
     if (!buffer || !topic || size == 0)
       return;
 
-    char _cut[20];
+    char _cut[sizeof(_user) + 2];
 
-    strcpy(_cut, _user);
-    strcat(_cut, "/");
+    snprintf(_cut, sizeof(_cut), "%s/", _user);
 
     const char *pos = (strncmp(topic, _cut, strlen(_cut)) == 0) ? topic + strlen(_cut) : topic;
 
@@ -309,7 +307,7 @@ public:
     if (!_PubSubClient.connected())
       return;
 
-    char _topic[50];
+    char _topic[MQTT_TOPIC_SIZE];
 
     makeTopic(_topic, sizeof(_topic), topic);
 
@@ -388,7 +386,7 @@ public:
     if (!_PubSubClient.connected())
       return;
 
-    char _topic[50] = "";
+    char _topic[MQTT_TOPIC_SIZE] = "";
     snprintf(_topic, sizeof(_topic), "%s/%s", _user, topic);
 
     // debug.tprintf("Subscribe(\"%s\")\n", _topic);
@@ -413,7 +411,7 @@ public:
 
   void setServer(const char *server) {
     if (strlen(server) > 0)
-      strcpy(_server, server);
+      strncpy(_server, server, sizeof(_server) - 1);
   }
 
   void setPort(const int port) {
@@ -422,12 +420,12 @@ public:
 
   void setUser(const char *user) {
     if (strlen(user) > 0)
-      strcpy(_user, user);
+      strncpy(_user, user, sizeof(_user) - 1);
   }
 
   void setPassword(const char *password) {
     if (strlen(password) > 0)
-      strcpy(_password, password);
+      strncpy(_password, password, sizeof(_password) - 1);
   }
 
   const char *Server() const {

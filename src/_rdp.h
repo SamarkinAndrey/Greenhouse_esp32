@@ -19,6 +19,9 @@ private:
   ulong  _saveInterval = HIMIDITY_PLOT_SAVE_INTERVAL;
   ulong  _saveMillis   = 0;
 
+  float _lastValue = NAN;
+  bool  _changed   = false;
+
   static const size_t RDP_STACK_SIZE = 128;
 
   char file_name[50] = "";
@@ -32,9 +35,10 @@ private:
     if (dx == 0)
       return fabs(valueP - value1);
 
-    const float slope     = (value2 - value1) / dx;
-    const float intercept = value1 - slope * time1;
-    return fabs(slope * timeP - valueP + intercept) / sqrt(slope * slope + 1.0f);
+    const float slope = (value2 - value1) / dx;
+    const float tP    = static_cast<float>(timeP - time1);
+
+    return fabs(slope * tP + (value1 - valueP)) / sqrt(slope * slope + 1.0f);
   }
 
   void rdpCompressImpl(Table &src, std::vector<bool> &keep, float epsilon) {
@@ -44,11 +48,14 @@ private:
       Segment(size_t s, size_t e) : start(s), end(e) {}
     };
 
+    if (src.rows() < 2)
+      return;
+
     std::vector<Segment> stack;
     stack.reserve(RDP_STACK_SIZE);
     stack.emplace_back(0, src.rows() - 1);
 
-    while (!stack.empty() && stack.size() < RDP_STACK_SIZE) {
+    while (!stack.empty()) {
       auto segment = stack.back();
       stack.pop_back();
 
@@ -140,6 +147,12 @@ public:
     if (!std::isfinite(value) || !sett.rtc.synced())
       return;
 
+    if (value == _lastValue)
+      return;
+
+    _lastValue = value;
+    _changed   = true;
+
     uint64_t _unixMs = sett.rtc.getUnixMs();
 
     _point.append(_unixMs, value);
@@ -185,16 +198,22 @@ public:
   }
 
   void Tick() {
-    if (_FS_Initialized && (_maxSize > 0) && (_saveInterval > 0) && ((_saveMillis == 0) || ((millis() - _saveMillis) >= _saveInterval))) {
-      _saveMillis = millis();
+    if (!_FS_Initialized || (_maxSize < 1) || (_saveInterval < 1))
+      return;
 
-      if (!_loaded) {
-        Load();
+    if ((_saveMillis > 0) && ((millis() - _saveMillis) < _saveInterval))
+      return;
 
-        _loaded = true;
-      } else {
-        Save();
-      }
+    _saveMillis = millis();
+
+    if (!_loaded) {
+      Load();
+
+      _loaded = true;
+    } else if (_changed) {
+      _changed = false;
+
+      Save();
     }
   }
 
@@ -202,6 +221,8 @@ public:
     _data.removeAll();
     _temp.removeAll();
 
+    _lastValue = NAN;
+    _changed   = false;
     _saveMillis = millis();
   }
 

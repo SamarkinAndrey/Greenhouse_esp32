@@ -92,6 +92,8 @@ public:
     _Level         = Level;
     _HardwareDelay = HardwareDelay;
 
+    digitalWrite(_Pin, !_Level);
+
     pinMode(_Pin, OUTPUT);
 
     _DurationTimer.setMode(MS);
